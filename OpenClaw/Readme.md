@@ -35,3 +35,4 @@
   "
 ```
 - **Never manually edit `openclaw.json` with a rich text editor** — smart quotes will break the JSON5 parser. Use `nano` or the Python snippet above.
+<img width="511" height="383" alt="image" src="https://github.com/user-attachments/assets/774fde90-4425-45b5-91ff-4467f0890aa8" />
