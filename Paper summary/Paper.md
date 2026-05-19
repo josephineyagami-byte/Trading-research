@@ -490,3 +490,543 @@ ETF → capital allocation
 ---
 
 
+# Inferring Microscopic Financial Information from the Long Memory in Order Flow
+
+## Authors
+- Iacopo Mastromatteo
+- Bence Tóth
+- Jean-Philippe Bouchaud
+- Others
+
+## Published
+Physical Review Letters (2023)
+
+---
+
+## Core Idea
+
+This paper studies one of the most important empirical observations in modern market microstructure:
+
+> Order flow is not random.
+
+More specifically, signed order flow exhibits **long memory**, meaning:
+
+- Buy orders tend to be followed by more buy orders
+- Sell orders tend to be followed by more sell orders
+- Directional flow persists over long horizons
+
+The paper shows that this persistence is strongly connected to:
+
+# Meta-order Splitting
+
+In other words:
+
+> Large institutions split massive parent orders into many smaller child orders executed sequentially over time.
+
+As a result, markets exhibit persistent directional pressure even when individual trades appear small and fragmented.
+
+---
+
+## Key Mathematical Insight
+
+The paper studies the autocorrelation structure of signed order flow:
+
+$$
+C(\tau) \propto \tau^{-\gamma}
+$$
+
+Where:
+
+- $C(\tau)$ = autocorrelation of signed order flow
+- $\tau$ = time lag
+- $\gamma$ = decay exponent
+
+The important result is:
+
+> Order flow autocorrelation decays slowly rather than disappearing immediately.
+
+This means markets retain memory of previous directional trading activity.
+
+---
+
+## Why This Matters
+
+This result fundamentally changes how institutional activity should be modeled.
+
+Traditional models assume:
+
+- Trades are IID
+- Order flow quickly randomizes
+- Market activity is memoryless
+
+This paper argues the opposite:
+
+> Persistent institutional execution creates statistically observable structure in market flow.
+
+Therefore, persistent signed imbalance is not merely "noise" or "momentum", but may instead represent:
+
+- Institutional accumulation
+- Institutional distribution
+- Ongoing meta-order execution
+
+---
+
+## Key Insight for This Research
+
+This paper provides the theoretical foundation for:
+
+- Signed order flow persistence detection
+- Meta-order segmentation
+- Institutional activity inference
+
+Our framework directly builds on the idea that:
+
+> Long memory in order flow is a statistical footprint of institutional order splitting.
+
+---
+
+## Practical Implication
+
+If markets repeatedly exhibit:
+
+- Persistent buy imbalance
+- Elevated relative volume
+- Stable VWAP interaction
+- Low impact efficiency
+
+then the probability of latent institutional execution increases significantly.
+
+This is the conceptual basis for detecting:
+
+- Institutional accumulation regimes
+- Institutional participation pressure
+- Inventory build-up dynamics
+
+---
+
+# Market Impact: Empirical Evidence, Theory and Practice
+
+## Authors
+- Jean-Philippe Bouchaud
+- J. Bonart
+- Jonathan Donier
+- Martin Gould
+
+## Published
+2022
+
+---
+
+## Core Idea
+
+This paper studies how large trades move markets.
+
+The key conclusion is:
+
+> Market impact is nonlinear.
+
+More specifically:
+
+$$
+Impact \propto \sqrt{Q}
+$$
+
+Where:
+
+- $Q$ = trade size
+- Impact = resulting price movement
+
+This is known as the:
+
+# Square-root Impact Law
+
+---
+
+## Why This Matters
+
+If price impact were linear:
+
+- Institutions could execute instantly.
+
+However, because impact grows nonlinearly:
+
+- Large aggressive orders become extremely expensive.
+- Institutions must minimize execution footprint.
+- Large trades must be fragmented over time.
+
+This creates the economic incentive for:
+
+# Meta-order Execution
+
+---
+
+## Key Insight
+
+Institutional execution is fundamentally an optimization problem.
+
+Institutions attempt to:
+
+- Minimize market impact
+- Avoid revealing information
+- Reduce execution cost
+- Maintain execution near VWAP benchmarks
+
+As a result, institutional flow often appears as:
+
+- Persistent elevated volume
+- Suppressed volatility
+- Stable VWAP interaction
+- Liquidity absorption
+- Controlled price trajectories
+
+rather than explosive directional movement.
+
+---
+
+## Temporary vs Permanent Impact
+
+Another major contribution of this paper is distinguishing:
+
+### Temporary Impact
+Short-term liquidity displacement.
+
+### Permanent Impact
+Information that remains embedded in price after execution ends.
+
+This distinction is extremely important.
+
+If price rapidly fully reverts after heavy trading:
+
+- The move was likely liquidity-driven.
+
+If price only partially decays:
+
+- The market may interpret the flow as informational.
+
+---
+
+## Key Insight for This Research
+
+This paper provides the theoretical foundation for:
+
+- Impact efficiency estimation
+- Liquidity absorption detection
+- VWAP execution analysis
+- Inventory accumulation inference
+
+Our framework directly builds on the idea that:
+
+> Institutional execution leaves identifiable market impact structures.
+
+---
+
+## Practical Implication
+
+True institutional accumulation often appears as:
+
+- Large persistent volume
+- Low impact efficiency
+- Stable VWAP anchoring
+- Partial post-trade decay
+- Sustained directional imbalance
+
+rather than short-term price spikes.
+
+This allows institutional participation to be inferred statistically even without access to proprietary inventory data.
+
+---
+
+# Combined Research Insight
+
+Together, these two papers establish the core logic of the entire framework.
+
+The first paper explains:
+
+> WHY persistent order flow exists.
+
+The second paper explains:
+
+> HOW institutions execute while minimizing market impact.
+
+Combining both ideas leads to the central thesis of this project:
+
+> Large institutional participants cannot execute instantaneously.
+> Therefore, they split orders across time.
+> This creates persistent directional order flow and identifiable impact structures.
+> These structures become statistically observable in public market data.
+
+As a result, although institutional inventory itself is hidden, markets still reveal:
+
+- Participation pressure
+- Accumulation behavior
+- Distribution regimes
+- Meta-order execution dynamics
+
+through observable signatures such as:
+
+- Signed order flow persistence
+- VWAP interaction
+- Relative volume expansion
+- Liquidity absorption
+- Impact decay
+- Suppressed impact efficiency
+
+The proposed framework therefore treats institutional inventory as a latent state and attempts to infer it probabilistically through persistent market behavior rather than explicit ownership disclosures.
+
+# Generating Realistic Metaorders from Public Data
+
+## Authors
+- Louis Béthune
+- Iacopo Mastromatteo
+- Jean-Philippe Bouchaud
+- Others
+
+## Published
+2025
+
+---
+
+## Why This Paper Is Extremely Important
+
+This paper is arguably one of the closest modern research works to the core objective of this project.
+
+Most historical market microstructure research relied on:
+
+- Proprietary institutional datasets
+- Broker execution records
+- Hidden inventory data
+
+However, such datasets are inaccessible to most researchers.
+
+This paper attempts to solve a much harder and more practical problem:
+
+> Can realistic institutional meta-orders be reconstructed using only public market data?
+
+This directly aligns with the central objective of our framework.
+
+---
+
+# Core Idea
+
+The paper argues that although institutional parent orders are hidden, they still leave behind:
+
+- Persistent directional order flow
+- Observable impact structures
+- Volume participation patterns
+- Execution trajectory signatures
+
+Therefore, even without direct institutional inventory data, it may still be possible to reconstruct statistically realistic meta-order behavior.
+
+This is extremely important because it reframes the entire problem:
+
+Instead of asking:
+
+> "Can we observe institutions directly?"
+
+the paper asks:
+
+> "Can we infer the latent execution process from market behavior?"
+
+---
+
+# What Is a Meta-order?
+
+A meta-order is not a single trade.
+
+Instead, it is:
+
+> A large institutional parent order fragmented into many smaller child orders executed sequentially over time.
+
+For example:
+
+A fund attempting to buy 10 million shares will typically split the order into:
+
+- Thousands of smaller executions
+- Spread across hours or days
+- Dynamically adjusted based on liquidity conditions
+
+As a result:
+
+Markets do not observe:
+
+- One massive trade
+
+but instead observe:
+
+- Persistent directional pressure
+- Stable participation
+- VWAP interaction
+- Controlled market impact
+
+---
+
+# Key Insight
+
+The paper demonstrates that realistic meta-orders generate highly structured market behavior.
+
+These behaviors include:
+
+- Long-memory in signed order flow
+- Persistent participation rate
+- Concave execution trajectories
+- Partial impact decay
+- Stable execution near liquidity centers
+
+This means institutional execution is not random.
+
+Instead, it creates identifiable statistical structure.
+
+---
+
+# Why This Matters for This Research
+
+This paper provides one of the strongest modern justifications for treating:
+
+- Institutional participation
+- Institutional inventory
+- Meta-order execution
+
+as:
+
+# Latent Variables
+
+rather than directly observable quantities.
+
+The paper strongly supports the idea that:
+
+> Institutional behavior can be statistically inferred even when direct ownership data is unavailable.
+
+This becomes the conceptual foundation for:
+
+- Inventory range estimation
+- Participation rate inference
+- Latent institutional flow detection
+
+---
+
+# Public Data Reconstruction
+
+One of the most important contributions of this paper is the idea that:
+
+> Public market activity contains enough structural information to reconstruct realistic execution dynamics.
+
+This directly supports our framework's methodology of using:
+
+- Signed order flow persistence
+- VWAP interaction
+- Relative volume expansion
+- Liquidity absorption
+- Impact suppression
+- Impact decay
+
+to infer hidden institutional activity.
+
+---
+
+# Connection to Inventory Estimation
+
+The paper is particularly relevant to the inventory estimation component of this project.
+
+Our framework assumes that institutional inventory is hidden:
+
+$$
+I_t = I_{t-1} + F_t - D_t
+$$
+
+Where:
+
+- $I_t$ = latent institutional inventory
+- $F_t$ = estimated institutional net flow
+- $D_t$ = unwind / decay component
+
+The paper supports the idea that although inventory itself is unobservable, persistent execution behavior creates sufficient statistical structure to estimate:
+
+- Directional accumulation pressure
+- Meta-order duration
+- Participation intensity
+- Inventory build-up ranges
+
+through public flow observations.
+
+---
+
+# Most Important Conceptual Contribution
+
+The most important contribution of this paper is the shift from:
+
+## Traditional Thinking
+
+> Institutions are invisible because inventory is hidden.
+
+to:
+
+## Modern Microstructure Thinking
+
+> Institutions are statistically inferable because execution leaves persistent structural footprints in public markets.
+
+This idea is central to the entire philosophy of this project.
+
+---
+
+# Key Practical Insight
+
+The paper implies that institutional accumulation does not necessarily appear as:
+
+- Explosive directional price movement
+- Large visible block trades
+
+Instead, it more commonly appears as:
+
+- Persistent elevated volume
+- Stable directional imbalance
+- Controlled market impact
+- VWAP-constrained execution
+- Repeated liquidity absorption
+- Gradual inventory accumulation
+
+This distinction is critical.
+
+Retail traders often look for:
+
+- Sudden price spikes
+- Breakouts
+- Momentum explosions
+
+However, real institutional execution frequently attempts to avoid exactly those outcomes.
+
+---
+
+# Connection to the Proposed Framework
+
+This paper directly supports the central methodology of the project:
+
+1. Detect persistent directional order flow
+2. Identify candidate meta-order execution regimes
+3. Estimate participation rate probabilistically
+4. Infer latent inventory accumulation ranges
+5. Model institutional positioning as a hidden state
+
+In this framework:
+
+- Market activity is observable
+- Institutional inventory is hidden
+- Meta-order execution acts as the latent process connecting both
+
+---
+
+# Combined Insight with Other Papers
+
+Together with:
+
+- *Inferring Microscopic Financial Information from the Long Memory in Order Flow*
+- *Market Impact: Empirical Evidence, Theory and Practice*
+
+this paper completes the conceptual foundation of the framework.
+
+The three papers together explain:
+
+1. Why order flow persistence exists
+2. Why institutions must split execution
+3. Why market impact creates structured execution behavior
+4. Why latent institutional flow can be inferred statistically
+5. Why inventory estimation must be probabilistic rather than deterministic
