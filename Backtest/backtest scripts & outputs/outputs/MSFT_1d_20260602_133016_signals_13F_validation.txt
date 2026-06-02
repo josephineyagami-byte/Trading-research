@@ -1,0 +1,19 @@
+13F VALIDATION REPORT
+Ticker:      MSFT
+Signal file: MSFT_1d_20260602_133016_signals.csv
+Generated:   2026-06-02 14:37:57
+
+Ticker                   : MSFT
+Comparable quarters      : 3
+Direction matches        : 1
+Match rate               : 33.3%
+Binomial p-value         : 0.875
+Significant (p<0.05)     : NO
+IC (strength corr)       : N/A
+IC p-value               : N/A
+
+Quarterly Detail:
+   quarter model_direction inst_direction  net_bias  change_pct
+2025-06-30    distribution   accumulation   -0.0968       2.112
+2025-09-30    distribution   distribution   -0.5781      -3.195
+2025-12-31    distribution   accumulation   -0.2344       0.943

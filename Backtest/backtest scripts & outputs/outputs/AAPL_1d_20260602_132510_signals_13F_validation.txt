@@ -1,0 +1,19 @@
+13F VALIDATION REPORT
+Ticker:      AAPL
+Signal file: AAPL_1d_20260602_132510_signals.csv
+Generated:   2026-06-02 14:37:31
+
+Ticker                   : AAPL
+Comparable quarters      : 3
+Direction matches        : 2
+Match rate               : 66.7%
+Binomial p-value         : 0.5
+Significant (p<0.05)     : NO
+IC (strength corr)       : N/A
+IC p-value               : N/A
+
+Quarterly Detail:
+   quarter model_direction inst_direction  net_bias  change_pct
+2025-06-30    accumulation   accumulation    0.2097       0.072
+2025-09-30    accumulation   distribution    0.1250      -4.506
+2025-12-31    accumulation   accumulation    0.0781       1.484

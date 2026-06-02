@@ -1,0 +1,19 @@
+13F VALIDATION REPORT
+Ticker:      GOOGL
+Signal file: GOOGL_1d_20260602_151837_signals.csv
+Generated:   2026-06-02 15:21:43
+
+Ticker                   : GOOGL
+Comparable quarters      : 3
+Direction matches        : 0
+Match rate               : 0.0%
+Binomial p-value         : 1.0
+Significant (p<0.05)     : NO
+IC (strength corr)       : N/A
+IC p-value               : N/A
+
+Quarterly Detail:
+   quarter model_direction inst_direction  net_bias  change_pct
+2025-06-30    distribution   accumulation   -0.0484       0.698
+2025-09-30    accumulation   distribution    0.0938      -3.614
+2025-12-31    distribution   accumulation   -0.1250       0.859
