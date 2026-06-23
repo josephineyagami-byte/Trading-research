@@ -7,7 +7,7 @@ Detects institutional accumulation/distribution using HMM on order flow features
 ## How It Works
 
 ```
-OHLCV (2.5yr) ─┐
+OHLCV (2yr) ─┐
 main-flow API  ─┼─► 6 features ─► 3-state HMM ─► signals
 large-trades   ─┘
 
@@ -143,8 +143,8 @@ inst_net_z = inst_net / rolling_20_std(inst_net)
 
 | Interval | Bars | Use Case | Viable |
 |----------|-----:|----------|:------:|
-| 1d | 610 | 13F validation, regime detection | ✅ |
-| 1h | 3646 | Signal-driven swing trading | ✅ |
+| 1d | 500 | 13F validation, regime detection | ✅ |
+| 1h | 1499 | Signal-driven swing trading | ✅ |
 | 4h | ~499 | — | ❌ Too few bars after ET filter |
 | 15m | 15810 | — | ❌ OFI noise, main-flow mismatch |
 
@@ -158,8 +158,8 @@ inst_net_z = inst_net / rolling_20_std(inst_net)
 
 ```bash
 # Generate signals
-python3 signal_generator.py --ticker NVDA --interval 1h --from-date 2024-01-01
-python3 signal_generator.py --ticker NVDA --interval 1d --from-date 2024-01-01
+python3 signal_generator.py --ticker NVDA --interval 1h --from-date 2024-07-01
+python3 signal_generator.py --ticker NVDA --interval 1d --from-date 2024-07-01
 
 # Backtest (1h, swing trading)
 python3 backtest.py --file output/NVDA_1h_*_signals.csv \
