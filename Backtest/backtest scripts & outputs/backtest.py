@@ -204,7 +204,120 @@ def wf_summary(wf: pd.DataFrame) -> dict:
 
 
 # ══════════════════════════════════════════════
-# 6. 置信度分层分析
+# 6. 信号驱动回测
+# ══════════════════════════════════════════════
+
+def signal_driven_backtest(df: pd.DataFrame, cost: float,
+                           max_hold: int = 24,
+                           min_confirm: int = 1,
+                           stop_loss: float = 0.02,
+                           long_only: bool = False) -> pd.DataFrame:
+    """
+    信号驱动持仓：积累入场，反向信号或 neutral 出场，最多持仓 max_hold bar
+    min_confirm: 连续 N bar 同向信号才入场（过滤噪音）
+    """
+    records = []
+    i = 0
+    n = len(df)
+
+    while i < n:
+        row    = df.iloc[i]
+        signal = row["signal"]
+        is_acc  = signal in ["accumulation", "strong_accumulation"]
+        is_dist = signal in ["distribution", "strong_distribution"]
+
+        if not (is_acc or is_dist):
+            i += 1
+            continue
+
+        # 持续性过滤：检查前 min_confirm-1 根 bar 是否同向
+        if min_confirm > 1 and i >= min_confirm - 1:
+            direction_check = +1 if is_acc else -1
+            confirmed = True
+            for k in range(1, min_confirm):
+                prev_sig = df.iloc[i-k]["signal"]
+                prev_acc = prev_sig in ["accumulation", "strong_accumulation"]
+                prev_dist = prev_sig in ["distribution", "strong_distribution"]
+                if direction_check == +1 and not prev_acc:
+                    confirmed = False
+                    break
+                if direction_check == -1 and not prev_dist:
+                    confirmed = False
+                    break
+            if not confirmed:
+                i += 1
+                continue
+
+        direction   = +1 if is_acc else -1
+        entry_price = row["close"]
+        entry_time  = row["datetime"]
+
+        # 找出场点（信号反转 / 止损 / 时间止损）
+        # stop_loss 已通过参数传入
+        exit_idx = min(i + max_hold, n - 1)
+        for j in range(i + 1, min(i + max_hold + 1, n)):
+            sig = df.iloc[j]["signal"]
+            price_j = df.iloc[j]["close"]
+            pnl = (price_j / entry_price - 1) * direction
+
+            # 止损
+            if pnl < -stop_loss:
+                exit_idx = j
+                break
+            # 信号反转出场
+            if direction == +1 and sig in ["distribution", "strong_distribution", "neutral"]:
+                exit_idx = j
+                break
+            if direction == -1 and sig in ["accumulation", "strong_accumulation", "neutral"]:
+                exit_idx = j
+                break
+
+        exit_price = df.iloc[exit_idx]["close"]
+        hold_bars  = exit_idx - i
+        net_ret    = (exit_price / entry_price - 1) * direction - cost * 2
+
+        records.append({
+            "entry_time":  entry_time,
+            "signal":      signal,
+            "direction":   "long" if direction == 1 else "short",
+            "hold_bars":   hold_bars,
+            "net_ret":     net_ret,
+            "win":         net_ret > 0,
+        })
+        i = exit_idx + 1
+
+    if not records:
+        return pd.DataFrame()
+    result = pd.DataFrame(records)
+    result["cum_ret"] = (1 + result["net_ret"]).cumprod() - 1
+    return result
+
+
+def sdb_summary(sdb: pd.DataFrame) -> dict:
+    if sdb.empty:
+        return {}
+    total   = len(sdb)
+    avg_ret = sdb["net_ret"].mean()
+    sharpe  = avg_ret / (sdb["net_ret"].std() + 1e-10) * np.sqrt(252)
+    cum     = sdb["cum_ret"].iloc[-1]
+    max_dd  = (sdb["cum_ret"] - sdb["cum_ret"].cummax()).min()
+    long_   = sdb[sdb["direction"] == "long"]
+    short_  = sdb[sdb["direction"] == "short"]
+    return {
+        "总交易次数":    total,
+        "胜率":         f"{sdb['win'].mean()*100:.1f}%",
+        "平均持仓(bar)": f"{sdb['hold_bars'].mean():.1f}",
+        "平均单次收益":  f"{avg_ret*100:.3f}%",
+        "累计收益":      f"{cum*100:.2f}%",
+        "最大回撤":      f"{max_dd*100:.2f}%",
+        "年化Sharpe":   f"{sharpe:.2f}",
+        "多头胜率":      f"{long_['win'].mean()*100:.1f}%" if len(long_) else "N/A",
+        "空头胜率":      f"{short_['win'].mean()*100:.1f}%" if len(short_) else "N/A",
+    }
+
+
+# ══════════════════════════════════════════════
+# 7. 置信度分层分析
 # ══════════════════════════════════════════════
 
 def confidence_analysis(df: pd.DataFrame, forward_h: int) -> pd.DataFrame:
@@ -271,33 +384,84 @@ def save_report(sections: dict, input_file: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Backtest Validator")
-    parser.add_argument("--file",    required=True, help="signal_generator 输出的 CSV 路径")
-    parser.add_argument("--forward", default=5, type=int,
-                        help="主要验证持有周期（bar 数）")
-    parser.add_argument("--cost",    default=0.001, type=float,
-                        help="单边交易成本（默认 0.1%%）")
-    parser.add_argument("--train",   default=60, type=int,
-                        help="Walk-Forward 训练窗口大小")
+    parser.add_argument("--file",           required=True,  help="signal_generator 输出的 CSV 路径")
+    parser.add_argument("--interval",       default=None,   help="时间框架: 1m/5m/15m/1h/4h/1d (不填则自动检测)")
+    parser.add_argument("--forward",        default=None,   type=int, help="主持仓周期 bar 数（不填则按时间框架自动设置）")
+    parser.add_argument("--cost",           default=None,   type=float, help="单边交易成本（不填则按时间框架自动设置）")
+    parser.add_argument("--train",          default=None,   type=int, help="Walk-Forward 训练窗口（不填则按时间框架自动设置）")
+    parser.add_argument("--min-confidence", default=0.0,    type=float, help="最低置信度过滤 0-1（默认不过滤）")
+    parser.add_argument("--no-overnight",   action="store_true",        help="过滤跨收盘持仓（小时线/分钟线推荐）")
+    parser.add_argument("--min-confirm",    default=2,    type=int,   help="信号持续性过滤：连续N bar同向才入场（默认2）")
+    parser.add_argument("--max-hold",       default=None, type=int,   help="信号驱动回测最大持仓bar数（默认forward*4）")
+    parser.add_argument("--long-only",      action="store_true",        help="只做多，不做空")
+    parser.add_argument("--stop-loss",      default=0.02, type=float,   help="止损比例（默认2%%）")
     args = parser.parse_args()
 
-    horizons = [1, 3, 5, 10, 20]
-    horizons = sorted(set(horizons + [args.forward]))
+    # 自动检测时间框架
+    fname = Path(args.file).name
+    import re as _re
+    interval_match = _re.search(r"_(1m|5m|15m|30m|1h|4h|1d|1w)_", fname)
+    detected = interval_match.group(1) if interval_match else (args.interval or "1d")
+    interval = args.interval or detected
+
+    # 按时间框架自动设置默认参数
+    PRESETS = {
+        "1m":  {"forward": 30,  "train": 2000, "cost": 0.0005, "horizons": [5, 15, 30, 60, 120]},
+        "5m":  {"forward": 12,  "train": 1000, "cost": 0.0005, "horizons": [3, 6, 12, 24, 48]},
+        "15m": {"forward": 8,   "train": 500,  "cost": 0.0008, "horizons": [2, 4, 8, 16, 32]},
+        "30m": {"forward": 6,   "train": 300,  "cost": 0.0008, "horizons": [2, 4, 6, 12, 24]},
+        "1h":  {"forward": 6,   "train": 500,  "cost": 0.001,  "horizons": [1, 3, 6, 12, 24]},
+        "4h":  {"forward": 5,   "train": 200,  "cost": 0.001,  "horizons": [1, 2, 5, 10, 20]},
+        "1d":  {"forward": 5,   "train": 60,   "cost": 0.001,  "horizons": [1, 3, 5, 10, 20]},
+        "1w":  {"forward": 4,   "train": 30,   "cost": 0.002,  "horizons": [1, 2, 4, 8, 12]},
+    }
+    preset = PRESETS.get(interval, PRESETS["1d"])
+
+    forward  = args.forward  if args.forward  is not None else preset["forward"]
+    cost     = args.cost     if args.cost     is not None else preset["cost"]
+    train    = args.train    if args.train    is not None else preset["train"]
+    horizons = sorted(set(preset["horizons"] + [forward]))
+    min_conf = args.min_confidence
 
     print(f"\n{'='*55}")
     print(f"  回测验证开始")
-    print(f"  文件: {args.file}")
-    print(f"  主持仓周期: {args.forward} bar | 交易成本: {args.cost*100:.2f}%")
+    print(f"  文件: {Path(args.file).name}")
+    print(f"  时间框架: {interval} | 训练窗口: {train} bar")
+    print(f"  主持仓周期: {forward} bar | 交易成本: {cost*100:.2f}%")
+    if min_conf > 0:
+        print(f"  最低置信度: {min_conf*100:.0f}%")
+    if args.no_overnight:
+        print(f"  隔夜过滤: 开启")
     print(f"{'='*55}\n")
 
     # 加载
     df = load_signals(args.file)
+
+    # 置信度过滤
+    if min_conf > 0:
+        before = len(df)
+        df = df[df["confidence"].abs() >= min_conf].reset_index(drop=True)
+        print(f"[过滤] 置信度 >= {min_conf*100:.0f}%: {len(df)}/{before} bars 保留")
+
+    # 隔夜过滤（小时线/分钟线）
+    if args.no_overnight and interval in ("1m","5m","15m","30m","1h"):
+        before = len(df)
+        df["_et"] = df["datetime"] - pd.Timedelta(hours=4)
+        df["_hm"] = df["_et"].dt.hour * 100 + df["_et"].dt.minute
+        # 只保留距收盘足够距离的信号（持仓不会跨收盘）
+        max_hold_mins = forward * {"1m":1,"5m":5,"15m":15,"30m":30,"1h":60}.get(interval,60)
+        close_et = 1600
+        cutoff = close_et - max_hold_mins
+        df = df[df["_hm"] < cutoff].drop(columns=["_et","_hm"]).reset_index(drop=True)
+        print(f"[过滤] 隔夜: {len(df)}/{before} bars 保留")
+
     df = add_forward_returns(df, horizons)
 
     sections = {}
 
     # ── Event Study
     print("[1/4] Event Study...")
-    es = event_study(df, horizons, args.cost)
+    es = event_study(df, horizons, cost)
     if not es.empty:
         print("\n" + es.to_string(index=False))
         sections["Event Study — 信号后各持仓周期收益"] = es
@@ -309,9 +473,29 @@ def main():
         print("\n" + ic.to_string(index=False))
         sections["信息系数 IC（信号强度与未来收益相关性）"] = ic
 
-    # ── Walk-Forward
-    print(f"\n[3/4] Walk-Forward 验证 (窗口={args.train}, 持仓={args.forward})...")
-    wf = walk_forward(df, args.train, args.forward, args.cost)
+    # ── Signal-Driven Backtest
+    print(f"\n[3/4] 信号驱动回测 (最大持仓={forward*4} bar)...")
+    sdb = signal_driven_backtest(df, cost, max_hold=args.max_hold or forward*4, min_confirm=args.min_confirm, stop_loss=args.stop_loss, long_only=args.long_only)
+    if not sdb.empty:
+        summary = sdb_summary(sdb)
+        print("\n信号驱动回测汇总:")
+        for k, v in summary.items():
+            print(f"  {k:<16}: {v}")
+        by_sig = sdb.groupby("signal").apply(
+            lambda g: pd.Series({
+                "次数": len(g),
+                "胜率": f"{g['win'].mean()*100:.1f}%",
+                "平均收益": f"{g['net_ret'].mean()*100:.3f}%",
+                "平均持仓": f"{g['hold_bars'].mean():.1f}bar",
+            })
+        ).reset_index()
+        print("\n按信号类型:")
+        print(by_sig.to_string(index=False))
+        sections["信号驱动回测"] = summary
+
+    # ── Walk-Forward（保留原有）
+    print(f"\n[3b/4] Walk-Forward 验证 (窗口={train}, 持仓={forward})...")
+    wf = walk_forward(df, train, forward, cost)
     if not wf.empty:
         summary = wf_summary(wf)
         print("\nWalk-Forward 汇总:")
@@ -332,8 +516,8 @@ def main():
         sections["Walk-Forward 按信号类型分解"] = wf_by_sig
 
     # ── 置信度分层
-    print(f"\n[4/4] 置信度分层分析 (forward={args.forward})...")
-    ca = confidence_analysis(df, args.forward)
+    print(f"\n[4/4] 置信度分层分析 (forward={forward})...")
+    ca = confidence_analysis(df, forward)
     if not ca.empty:
         print("\n" + ca.to_string(index=False))
         print("\n  解读：若高置信度区间收益/胜率更高，说明置信度分数有效。")
