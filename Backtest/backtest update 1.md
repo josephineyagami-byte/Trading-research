@@ -26,6 +26,117 @@ signals ─► backtest.py     (1h/15m: event study + signal-driven)
 | `vwap_dev` | OHLCV | deviation from VWAP |
 | `inst_net_z` | main-flow API | ✅ only true directional feature |
 
+# 7 Feature Formulas and Definitions
+
+## 1. ofi_z — Order Flow Imbalance (Normalized)
+
+**Economic Meaning:** Measures the buy/sell pressure imbalance within each bar. Positive values indicate buyer dominance; negative values indicate seller dominance.
+
+**Formula (Mixed OFI):**
+mixed_OFI = α × LR_OFI + (1-α) × BVC_OFI
+
+Lee-Ready OFI:
+  midprice = (high + low) / 2
+  lr_sign  = +1  if close > midprice
+           = -1  if close < midprice
+           = sign(close - prev_close)  otherwise  (tick rule)
+  LR_OFI   = Σ(lr_sign × volume)  over rolling 5 bars
+
+BVC OFI (Easley, López de Prado & O'Hara, 2012):
+  buy_frac = (close - low) / (high - low)
+  BVC_net  = (buy_frac - 0.5) × 2 × volume
+  BVC_OFI  = Σ(BVC_net)  over rolling 5 bars
+
+Dynamic blend coefficient α:
+  ret_ma   = |rolling_20_mean(pct_change)|
+  ret_norm = clip(ret_ma / rolling_50_mean(ret_ma), 0, 2) / 2
+  α        = ret_norm  (high trend → α near 1, use Lee-Ready;
+                        ranging market → α near 0, use BVC)
+
+ofi_z = mixed_OFI / rolling_20_std(mixed_OFI)
+> ⚠️ **Note:** Lee-Ready rule has a systematic bias in strong trending markets, which is one reason ofi_z loses predictive power on trend stocks like PLTR in IC analysis.
+
+---
+
+## 2. rvol — Relative Volume
+
+**Economic Meaning:** The ratio of current volume to its recent mean. Values above 1 indicate elevated activity, potentially driven by institutional participation or significant events.
+
+**Formula:** rvol = volume / rolling_20_mean(volume)
+**Notes:** Directionless — purely an activity indicator. IC analysis shows relatively weak predictive power on AAPL (avg|IC|=0.040), but sign is consistent.
+
+---
+
+## 3. impact_eff_z — Price Impact Efficiency (Normalized)
+
+**Economic Meaning:** Price movement per unit of volume. Low values indicate "heavy volume with minimal price movement" — a typical signature of institutional passive filling (iceberg orders).
+
+**Formula:**
+impact_eff   = |close - prev_close| / rolling_5_mean(volume)
+impact_eff_z = (impact_eff - rolling_20_mean(impact_eff)) / rolling_20_std(impact_eff)
+
+**IC Performance:** Weak across all tickers (avg|IC|≈0.027). No significant horizon found in IC analysis — one of the least contributing features.
+
+---
+
+## 4. liq_abs_z — Liquidity Absorption (Normalized)
+
+**Economic Meaning:** Liquidity absorption intensity. High values indicate "high volume + narrow price range" — large order flow absorbed without moving price, a signal of institutional passive liquidity provision at a price level.
+
+**Formula:**
+range        = (high - low) / close
+liq_absorption = rvol / (range × 100 + ε)    ε = 0.001，防除零
+liq_abs_z    = (liq_absorption - rolling_20_mean) / rolling_20_std
+
+**IC Performance:** Worst among all 7 features (AAPL avg|IC|=0.013), inconsistent sign. Recommended to re-evaluate after data cleaning — consider reducing weight to near 0.
+
+---
+
+## 5. vwap_dev — VWAP Deviation
+
+**Economic Meaning:** Current close price deviation from the 20-period volume-weighted average price. Positive values indicate price above VWAP (buyer strength); negative values indicate below VWAP (seller strength). Widely used by institutions as a benchmark price.
+
+**Formula:**
+vwap_roll = Σ(close × volume, 20) / Σ(volume, 20)
+vwap_dev  = (close - vwap_roll) / vwap_roll
+**IC Performance:** Highest single-horizon IC on NVDA at 24bar (IC=0.1325), but overall avg|IC|=0.042 with consistent sign. Notable cross-ticker variance.
+
+---
+
+## 6. clv — Close Location Value
+
+**Economic Meaning:** The relative position of the closing price within the bar's high-low range, bounded [-1, +1]. +1 means close at the high (full-day buyer dominance); -1 means close at the low (full-day seller dominance).
+
+**Formula:**
+clv = (2 × close - high - low) / (high - low)
+**Origin:** Derived from the Arms Index; also the core component of Williams Accumulation/Distribution.
+
+**IC Performance:** avg|IC|=0.032, inconsistent sign — behaves close to noise across multiple tickers.
+
+---
+
+## 7. price_persistence — Price Persistence
+
+**Economic Meaning:** The ratio of mean returns to return volatility over the last 3 bars — analogous to a short-window signal-to-noise ratio. Positive values indicate strong directional consistency (trend continuation); negative values indicate reversal.
+
+**Formula:**
+price_persistence = rolling_3_mean(ret) / (rolling_3_std(ret) + ε)
+                                                              ε = 1e-8，防除零
+其中 ret = pct_change(close)
+**IC Performance:** avg|IC|=0.026. Only the 6-bar horizon on AAPL is significant (p=0.029). Overall weak.
+
+---
+
+## 8. inst_net_z — Institutional Net Flow (Normalized)
+
+**Economic Meaning:** Normalized Z-score of net institutional large-order buy/sell dollar flow within each bar. The only feature derived from real tick-level trade data — not estimated from OHLCV.
+
+**Formula:**
+inst_net   = (super_buy - super_sell) + (large_buy - large_sell)
+             其中 super ≥ $500K notional，large = $100K-$500K
+inst_net_z = inst_net / rolling_20_std(inst_net)
+**Current Limitations:** Coverage ranges from 5–48% (ticker-specific), and 2026 data has severe duplicate contamination (notional inflated by 20–70%). Despite being the highest-weighted feature (0.50), actual predictive power is significantly dragged down by data quality issues
+
 ---
 
 ## Timeframe Summary
