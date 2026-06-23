@@ -104,53 +104,72 @@ def load_klines(ticker: str, interval: str, limit: int,
     df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
 
-    print(f"[OK] K线: {len(df)} bars  [{df['datetime'].iloc[0]} -> {df['datetime'].iloc[-1]}]")
+    # 转换时区 UTC → ET，过滤盘内时间（9:30-16:00 ET）
+    if timespan in ("minute", "hour"):
+        before = len(df)
+        # UTC+0 → ET (UTC-5 标准/UTC-4 夏令时)，用固定偏移 -4h 近似（夏令时）
+        df["_et"] = df["datetime"] - pd.Timedelta(hours=4)
+        df["_hm"] = df["_et"].dt.hour * 100 + df["_et"].dt.minute
+        df = df[(df["_hm"] >= 930) & (df["_hm"] < 1600)].drop(columns=["_hm","_et"]).reset_index(drop=True)
+        print(f"[OK] K线(盘内ET): {len(df)} bars (过滤 {before-len(df)} 盘外bar)  [{df['datetime'].iloc[0]} -> {df['datetime'].iloc[-1]}]")
+    else:
+        print(f"[OK] K线: {len(df)} bars  [{df['datetime'].iloc[0]} -> {df['datetime'].iloc[-1]}]")
     return df
 
 
 def load_main_flow(ticker: str, interval: str, limit: int,
                   from_date: str = None, to_date: str = None) -> object:
     from datetime import datetime, timedelta
-    interval_map = {
-        "1m":  (1,"minute"), "5m":  (5,"minute"),
-        "15m": (15,"minute"),"30m": (30,"minute"),
-        "1h":  (1,"hour"),   "4h":  (4,"hour"),
-        "1d":  (1,"day"),    "1w":  (1,"week"),
-    }
-    multiplier, timespan = interval_map.get(interval, (1, "minute"))
-    date_to   = to_date   if to_date   else datetime.now().strftime("%Y-%m-%d")
-    date_from = from_date if from_date else (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    raw = fetch("/api/main-flow", {
-        "ticker":     ticker,
-        "multiplier": multiplier,
-        "timespan":   timespan,
-        "from":       date_from,
-        "to":         date_to,
-    })
-    if raw is None:
-        print("[WARN] main-flow 接口不可用，跳过")
-        return None
+    MAINFLOW_START = datetime(2025, 7, 1)  # confirmed via export tool preview
+    dt_to   = datetime.strptime(to_date,   "%Y-%m-%d") if to_date   else datetime.now()
+    dt_from = datetime.strptime(from_date, "%Y-%m-%d") if from_date else MAINFLOW_START
+    if dt_from < MAINFLOW_START:
+        print(f"[INFO] main-flow 数据从 {MAINFLOW_START.date()} 开始，自动调整起始日期")
+        dt_from = MAINFLOW_START
 
-    arr = raw if isinstance(raw, list) else (raw.get("bars") or raw.get("data") or raw.get("flow") or [])
-    if not arr:
-        print("[WARN] main-flow 数据为空")
+    # 按月分段拉取，避免单次数据量过大超时
+    all_rows = []
+    cursor = dt_from
+    while cursor < dt_to:
+        next_cursor = min(cursor + timedelta(days=30), dt_to)
+        seg_from = cursor.strftime("%Y-%m-%d")
+        seg_to   = next_cursor.strftime("%Y-%m-%d")
+
+        raw = fetch("/api/main-flow", {
+            "ticker":     ticker,
+            "multiplier": 5,
+            "timespan":   "minute",
+            "from":       seg_from,
+            "to":         seg_to,
+        })
+        if raw:
+            arr = raw if isinstance(raw, list) else (raw.get("bars") or raw.get("data") or [])
+            all_rows.extend(arr)
+            print(f"  main-flow {seg_from} → {seg_to}: {len(arr)} bars")
+        cursor = next_cursor
+
+    if not all_rows:
+        print("[WARN] main-flow 无数据，跳过")
         return None
 
     rows = []
-    for b in arr:
+    for b in all_rows:
         t = b.get("time") or b.get("t") or b.get("timestamp") or 0
-        if "super_buy" in b:
-            xl_net = float(b.get("super_buy", 0)) - float(b.get("super_sell", 0))
-            l_net  = float(b.get("large_buy",  0)) - float(b.get("large_sell",  0))
-            m_net  = float(b.get("mid_buy",    0)) - float(b.get("mid_sell",    0))
-            s_net  = float(b.get("small_buy",  0)) - float(b.get("small_sell",  0))
-        else:
-            g = lambda *ks: next((float(b[k]) for k in ks if b.get(k) is not None), 0.0)
-            xl_net = g("super_large_net", "xl_net", "tier1_net")
-            l_net  = g("large_net", "l_net", "tier2_net")
-            m_net  = g("medium_net", "m_net", "tier3_net")
-            s_net  = g("small_net", "s_net", "tier4_net")
+        xl_net = float(b.get("super_buy", 0)) - float(b.get("super_sell", 0))
+        l_net  = float(b.get("large_buy",  0)) - float(b.get("large_sell",  0))
+        m_net  = float(b.get("mid_buy",    0)) - float(b.get("mid_sell",    0))
+        s_net  = float(b.get("small_buy",  0)) - float(b.get("small_sell",  0))
+
+        # 数据清洗: 过滤开盘第一分钟（UTC 13:30）和异常大单
+        dt_utc = pd.Timestamp(int(t), unit="ms")
+        dt_et  = dt_utc - pd.Timedelta(hours=4)
+        is_open_auction = (dt_et.hour == 9 and dt_et.minute <= 31)
+        is_outlier = abs(xl_net) > 50_000_000  # 超过5000万认为是异常
+
+        if is_open_auction or is_outlier:
+            continue
+
         rows.append({"timestamp": int(t), "xl_net": xl_net,
                      "l_net": l_net, "m_net": m_net, "s_net": s_net})
 
@@ -159,16 +178,27 @@ def load_main_flow(ticker: str, interval: str, limit: int,
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
     df["date"]     = df["datetime"].dt.normalize()
 
-    # 聚合到日线
-    agg = df.groupby("date").agg(
-        inst_net=("inst_net", "sum"),
-        xl_net=("xl_net", "sum"),
-        l_net=("l_net", "sum"),
-    ).reset_index()
-    agg["timestamp"] = agg["date"].astype("int64") // 10**6
-
-    print(f"[OK] main-flow: {len(arr)} bars → 聚合为 {len(agg)} 日线")
-    return agg
+    # 日线模式：聚合到日线
+    if interval == "1d":
+        agg = df.groupby("date").agg(
+            inst_net=("inst_net", "sum"),
+            xl_net=("xl_net", "sum"),
+            l_net=("l_net", "sum"),
+        ).reset_index()
+        agg["timestamp"] = agg["date"].astype("int64") // 10**6
+        print(f"[OK] main-flow: {len(all_rows)} bars → 聚合为 {len(agg)} 日线")
+        return agg
+    else:
+        # 小时/分钟模式：按小时聚合
+        df["hour"] = df["datetime"].dt.floor("H")
+        agg = df.groupby("hour").agg(
+            inst_net=("inst_net", "sum"),
+            xl_net=("xl_net", "sum"),
+            l_net=("l_net", "sum"),
+        ).reset_index()
+        agg["timestamp"] = agg["hour"].astype("int64") // 10**6
+        print(f"[OK] main-flow: {len(all_rows)} bars → 聚合为 {len(agg)} 小时线")
+        return agg
 
 
 def load_large_trades(ticker: str, limit: int = 500) -> object:
@@ -261,8 +291,15 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def merge_flow(df: pd.DataFrame, flow_df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    flow_sub = flow_df[["date", "inst_net", "xl_net", "l_net"]].copy()
-    df["date"] = df["datetime"].dt.normalize()
+    # 兼容日线(date列)和小时线(hour列)
+    date_col = "date" if "date" in flow_df.columns else "hour"
+    flow_sub = flow_df[[date_col, "inst_net", "xl_net", "l_net"]].copy()
+    if date_col == "hour":
+        flow_sub = flow_sub.rename(columns={"hour": "date"})
+    if "hour" in flow_df.columns:
+        df["date"] = df["datetime"].dt.floor("H")
+    else:
+        df["date"] = df["datetime"].dt.normalize()
     df = df.merge(flow_sub, left_on="date", right_on="date", how="left")
     df[["inst_net", "xl_net", "l_net"]] = df[["inst_net", "xl_net", "l_net"]].fillna(0)
 
