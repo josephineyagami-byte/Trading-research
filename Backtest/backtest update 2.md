@@ -33,9 +33,6 @@ OHLCV + main-flow API → compute_features() → fit_hmm() → compute_signal() 
 | `batch_feature_ic.py` | Multi-ticker batch IC analysis | ✅ Failed-ticker bug fixed |
 | `fetch_candidate_features.py` | Pull short interest / dark pool / large trade total | ✅ Dedup + dark pool added |
 | `plot_inst_flow.py` | Interactive Plotly chart (K-line + flow signals) | ✅ Linked hover + zoom + y-axis adaptive |
-| `plot_inst_flow_d3.py` | D3.js chart (linked hover, no zoom) | ✅ Backup |
-| `recompute_mainflow_v2.py` | Large-trades resume fetch + dedup | ✅ Usable |
-| `dedupe_large_trades.py` | Duplicate detection diagnostic | ✅ Usable |
 | `diagnose_coverage.py` | main-flow coverage diagnostic | ✅ Usable |
 
 ### Patch scripts (one-time use, already applied)
