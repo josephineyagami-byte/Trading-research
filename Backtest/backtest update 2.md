@@ -35,10 +35,6 @@ OHLCV + main-flow API → compute_features() → fit_hmm() → compute_signal() 
 | `plot_inst_flow.py` | Interactive Plotly chart (K-line + flow signals) | ✅ Linked hover + zoom + y-axis adaptive |
 | `diagnose_coverage.py` | main-flow coverage diagnostic | ✅ Usable |
 
-### Patch scripts (one-time use, already applied)
-- `apply_hmm_fix.py` — HMM quality threshold + proportional boost
-- `apply_oos_fix.py` — validate_13f.py --oos-only support
-
 ---
 
 ## 3. Completed Work This Session
