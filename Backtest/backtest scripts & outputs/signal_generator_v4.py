@@ -60,23 +60,245 @@ warnings.filterwarnings("ignore")
 BASE_URL   = "http://104.192.7.156:8000"
 TIMEOUT    = 60
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
+RAW_CACHE_DIR = os.path.join(os.path.dirname(__file__), "raw_data_cache")
+os.makedirs(RAW_CACHE_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Fixed adaptive weights (no training needed)
 # Rationale: inst_net_z is the only feature with true directional information.
 # When available, it dominates. OHLCV features provide supporting context.
 #
-# v4 evidence-based weights — removed liq/clv/pers, raised ofi 0.15->0.30
-# With main-flow:    flow=0.45 | ofi=0.30 | rvol=0.10 | vwap=0.10 | impact=0.05
-# Without main-flow: flow=0.00 | ofi=0.50 | rvol=0.20 | vwap=0.20 | impact=0.10
+# v4 fallback weights — used when ticker is not in TICKER_CLUSTER_MAP and
+# no cluster can be inferred. Evidence-based from 23-ticker IC analysis.
 WEIGHTS_WITH_FLOW = {
-    "flow": 0.45, "ofi": 0.30, "rvol": 0.10,
-    "vwap": 0.10, "impact": 0.05
+    "flow": 0.45, "ofi": 0.35, "vwap": 0.15, "impact": 0.05
 }
 WEIGHTS_NO_FLOW = {
-    "flow": 0.00, "ofi": 0.50, "rvol": 0.20,
-    "vwap": 0.20, "impact": 0.10
+    "flow": 0.00, "ofi": 0.55, "vwap": 0.30, "impact": 0.15
 }
+# rvol is no longer a fixed-weight directional feature.
+# IC sign is inconsistent across tickers (0/23 on 1d data, 23-ticker study) —
+# meaning high volume has no stable directional bias.
+# Instead, rvol acts as a multiplicative amplifier.
+RVOL_BOOST_SCALE = 0.10   # max ±10% amplification
+RVOL_BOOST_CLIP  = 0.10   # hard cap on boost magnitude
+
+# ══════════════════════════════════════════════
+# IC-Pattern Cluster Weights (v4 — derived from ic_analysis_yfinance.py)
+# ══════════════════════════════════════════════
+# Method: Hierarchical clustering (k=5, silhouette=0.307) on each ticker's
+# 4-dim avg|IC| vector [ofi_z, rvol, vwap_dev, impact_eff_z], computed
+# from 42 tickers on 1d yfinance OHLCV data (expanded from an initial
+# 23-ticker run after validate_cluster_coverage.py showed 6/12 new-sector
+# tickers fell outside the original 4 clusters' coverage). Validated via:
+#   - Kruskal-Wallis: 4/4 features significant (all p<0.05) — stronger
+#     than the prior 23-ticker/k=4 run (2/4 significant)
+#   - F-ratio: 4/4 features > 1 (between-group var > within-group var)
+#   - Bootstrap stability (100 resamples): mean co-occurrence = 0.768
+#
+# Known caveats (documented, not yet resolved):
+#   - G0 has only 2 tickers (UNH, EQIX) — bootstrap shows its boundary
+#     with G3 is somewhat blurry (UNH-XOM and EQIX-XOM co-occurrence
+#     >0.7 despite being in different clusters). Treat G0 weights as
+#     lower-confidence until more healthcare/REIT-pattern tickers are added.
+#   - RIVN sits in G2 but has low co-occurrence (<0.3) with every other
+#     G2 member — it's an isolated point, not a confirmed part of that
+#     cluster's pattern. More high-volatility growth tickers needed to
+#     confirm its true grouping.
+#
+# These are NO-FLOW weights only. Flow (inst_net_z) weight design is
+# deferred until server data quality is resolved and per-ticker flow
+# sensitivity can be measured (see project handoff doc section 6).
+#
+# rvol_amp_scale: relative rvol IC strength vs strongest cluster (G2) —
+# clusters with higher rvol IC get a stronger amplifier effect.
+# overall_scale: relative total IC strength (sum of all 4 features) vs
+# strongest cluster (G0) — clusters with weak IC overall (G4) get signal
+# strength dialed down rather than overweighted.
+CLUSTER_WEIGHTS = {
+    "G0": {"ofi": 0.53, "vwap": 0.30, "impact": 0.17,
+           "rvol_amp_scale": 0.61, "overall_scale": 1.00},
+    "G1": {"ofi": 0.35, "vwap": 0.22, "impact": 0.42,
+           "rvol_amp_scale": 0.51, "overall_scale": 0.82},
+    "G2": {"ofi": 0.46, "vwap": 0.34, "impact": 0.19,
+           "rvol_amp_scale": 1.00, "overall_scale": 0.72},
+    "G3": {"ofi": 0.31, "vwap": 0.48, "impact": 0.21,
+           "rvol_amp_scale": 0.58, "overall_scale": 0.70},
+    "G4": {"ofi": 0.41, "vwap": 0.32, "impact": 0.26,
+           "rvol_amp_scale": 0.38, "overall_scale": 0.47},
+}
+
+# Ticker -> cluster lookup, from 42-ticker IC clustering run (2026-06-23,
+# k=5). Tickers not in this map fall back to soft cluster assignment
+# (see CLUSTER_CENTROIDS below) rather than a flat global default.
+TICKER_CLUSTER_MAP = {
+    "UNH": "G0", "EQIX": "G0",
+    "TSLA": "G1", "GS": "G1",
+    "GOOGL": "G2", "AAPL": "G2", "LLY": "G2", "PFE": "G2", "PLD": "G2",
+    "O": "G2", "RBLX": "G2", "SOFI": "G2", "RIVN": "G2",
+    "AMZN": "G3", "WMT": "G3", "JPM": "G3", "AMD": "G3", "JNJ": "G3",
+    "XOM": "G3", "ARM": "G3", "MRK": "G3", "UBER": "G3", "AMT": "G3",
+    "MSTR": "G3", "IWM": "G3",
+    "NVDA": "G4", "MSFT": "G4", "META": "G4", "BRK-B": "G4", "CAT": "G4",
+    "ABBV": "G4", "KO": "G4", "PG": "G4", "NFLX": "G4", "PLTR": "G4",
+    "BA": "G4", "CRM": "G4", "COIN": "G4", "SMCI": "G4", "DKNG": "G4",
+    "SPY": "G4", "QQQ": "G4",
+}
+# SPY/QQQ land in G4 for structural reasons (ETF basket pricing suppresses
+# single-stock microstructure signals), not a data quality issue. See
+# project doc section 3.4 for full explanation. Treat as benchmark
+# references for chart overlay, not signal generation targets.
+
+# ══════════════════════════════════════════════
+# WITH-FLOW Cluster Weights — VALIDATED, WIRED INTO compute_signal()
+# ══════════════════════════════════════════════
+# History: an earlier 3-ticker draft (AAPL/GOOGL/NVDA only) was staged
+# here but explicitly NOT wired in, pending more data and validation.
+# This is the follow-up: 19 tickers (2026-06-30 run), confidence-weighted
+# IC over 5 dims [ofi_z, rvol, vwap_dev, impact_eff_z, inst_net_z],
+# k=3 clustering (silhouette=0.306, highest across k=2-6 tested).
+#
+# Validation (validate_clustering_with_flow.py):
+#   - Kruskal-Wallis: 2/5 significant (rvol p=0.035, inst_net_z p=0.027;
+#     vwap_dev p=0.073 borderline)
+#   - F-ratio: 5/5 features > 1 (inst_net_z highest at F=16.30)
+#   - Bootstrap stability (100 resamples): mean co-occurrence = 0.846
+#     (0 unstable pairs, 0 ambiguous cross-cluster pairs — strongest
+#     stability result of any clustering run so far, no-flow or with-flow)
+#   - Pairwise Mann-Whitney confirms each cluster's claimed dominant
+#     feature is significantly different from at least one other cluster:
+#     F0 vs F2 on inst_net_z (p=0.0036) and ofi_z (p=0.0250);
+#     F1 vs F2 on vwap_dev (p=0.0393) and rvol (p=0.0143)
+#
+# ⚠️ STILL CARRYING THE SAME DATA-QUALITY CAVEAT AS BEFORE — not resolved,
+# just no longer blocking. main-flow coverage numbers used here are the
+# TRIMMED ("effective start") values from ic_analysis_with_flow.py, which
+# corrects for pipeline-not-yet-deployed gaps (most tickers' raw coverage
+# jumped from 10-20% to 94-99% after trimming to when the pipeline
+# actually started producing data for that ticker). This does NOT fix the
+# underlying large-trades duplicate-rate issue (still 32.5% for AAPL,
+# unresolved at the DB level) — duplicates inside the "effective" window
+# are still uncorrected at the source, only caught by the in-script
+# dedup in load_large_trades(), which operates on a different table than
+# the main-flow hourly aggregates these IC numbers are computed from.
+# Treat this as the best available data, not as clean data.
+#
+# F0 = SPY/NVDA/MSFT pattern — flow-dominant, ofi weak (3 tickers)
+# F1 = TSLA/GOOGL/WMT pattern — vwap-dominant (3 tickers)
+# F2 = everyone else (14 tickers) — ofi-dominant, the largest/most
+#      heterogeneous group; bootstrap stability for this group is still
+#      strong (no unstable pairs) despite its size, but it likely
+#      contains sub-structure that more tickers + a higher k would reveal
+#
+# Flow weight capped at 0.45 (same ceiling as global WEIGHTS_WITH_FLOW)
+# — F0's raw pooled-IC-implied flow share was 0.60, capped down.
+WITH_FLOW_CLUSTER_WEIGHTS = {
+    "F0": {"flow": 0.45, "ofi": 0.14, "vwap": 0.28, "impact": 0.13, "rvol_amp_scale": 1.00},
+    "F1": {"flow": 0.09, "ofi": 0.20, "vwap": 0.56, "impact": 0.15, "rvol_amp_scale": 0.94},
+    "F2": {"flow": 0.14, "ofi": 0.44, "vwap": 0.31, "impact": 0.11, "rvol_amp_scale": 0.50},
+}
+TICKER_CLUSTER_MAP_WITH_FLOW = {
+    "SPY": "F0", "NVDA": "F0", "MSFT": "F0",
+    "TSLA": "F1", "GOOGL": "F1", "WMT": "F1",
+    "AAPL": "F2", "UBER": "F2", "QQQ": "F2", "PLTR": "F2", "META": "F2",
+    "GS": "F2", "CRM": "F2", "COIN": "F2", "CAT": "F2", "BA": "F2",
+    "AMD": "F2", "JPM": "F2", "XOM": "F2",
+}
+# TODO: re-run with more tickers once DB-level dedup is fixed, especially
+# to test whether F2 (14 tickers) splits into sub-clusters at a higher k.
+# Tickers not in this map fall back to the flat global WEIGHTS_WITH_FLOW
+# (no soft-assignment system built for the with-flow case yet — the
+# no-flow soft assignment via CLUSTER_CENTROIDS doesn't apply here since
+# it's a 4-dim space, not 5-dim with inst_net_z).
+
+# ══════════════════════════════════════════════
+# Soft Cluster Assignment (for tickers NOT in TICKER_CLUSTER_MAP)
+# ══════════════════════════════════════════════
+# Design choice: fixed centroids + softmax distance weighting, NOT
+# online-updated centroids and NOT full re-clustering on every new ticker.
+#
+# Why not online-updated centroids: centroids would drift based on the
+# ORDER tickers are added (path dependency) — hard to debug, and
+# philosophically the same risk as the v2 Lasso mistake (letting historical
+# data continuously reshape model parameters introduces instability when
+# the ticker count is still small).
+#
+# Why not full re-clustering every time: cluster labels (G0/G1/G2/G3) are
+# arbitrary from k-means and can swap on every re-run, breaking any
+# downstream weight table that references "G0" by name. Also expensive.
+#
+# Fixed centroids + softmax gives a deterministic, order-independent
+# result: the same ticker always gets the same weight blend, and a ticker
+# that sits between two clusters gets a sensible mix instead of being
+# forced into one bucket. Target accuracy for this system is ~70%, not
+# 100% — softmax blending is appropriate at that precision level; a more
+# complex online-learning system would be over-engineering for the
+# accuracy actually needed.
+#
+# Centroids below are in STANDARDIZED space — computed from the 23-ticker
+# training set's mean/std for [ofi_z, rvol, vwap_dev, impact_eff_z].
+# These must be regenerated (via ic_analysis_yfinance.py) if the training
+# ticker set changes materially.
+CLUSTER_CENTROIDS_MEAN_STD = {
+    # mean/std used to standardize a new ticker's raw avg|IC| vector
+    # before computing distance to centroids — must match the scaler
+    # used when CLUSTER_CENTROIDS was computed (sklearn StandardScaler
+    # fit on the 42-ticker training set, 1d interval, 2026-06-23 run).
+    "ofi_z":         {"mean": 0.0410, "std": 0.0198},
+    "rvol":          {"mean": 0.0346, "std": 0.0169},
+    "vwap_dev":      {"mean": 0.0382, "std": 0.0159},
+    "impact_eff_z":  {"mean": 0.0240, "std": 0.0116},
+}
+CLUSTER_CENTROIDS = {
+    # Centroid position in standardized space, order: [ofi_z, rvol, vwap_dev, impact_eff_z]
+    # Computed via StandardScaler + groupby-mean on the 42-ticker IC matrix (k=5).
+    "G0": np.array([ 2.8514,  0.0678,  1.0377,  0.5621]),
+    "G1": np.array([ 0.5765, -0.2631, -0.3082,  3.3101]),
+    "G2": np.array([ 0.2469,  1.4295, -0.2573, -0.4274]),
+    "G3": np.array([-0.1746, -0.0243,  1.1846,  0.0719]),
+    "G4": np.array([-0.4107, -0.7167, -0.7858, -0.2800]),
+}
+SOFTMAX_TEMPERATURE = 1.0  # higher = softer/more blended, lower = harder/closer to nearest-only
+
+
+def get_soft_cluster_weights(ic_vector: dict) -> dict:
+    """
+    Given a new ticker's raw avg|IC| vector (keys: ofi_z, rvol, vwap_dev,
+    impact_eff_z), return a blended weight dict using softmax-weighted
+    distance to the fixed cluster centroids.
+
+    This is used for tickers NOT in TICKER_CLUSTER_MAP — i.e. any ticker
+    outside the original 23-ticker training set. Target precision ~70%,
+    so a soft blend across the nearest clusters is preferred over forcing
+    a hard assignment.
+    """
+    # Standardize using training set's mean/std
+    std_vec = np.array([
+        (ic_vector.get(f, 0.0) - CLUSTER_CENTROIDS_MEAN_STD[f]["mean"])
+        / CLUSTER_CENTROIDS_MEAN_STD[f]["std"]
+        for f in ["ofi_z", "rvol", "vwap_dev", "impact_eff_z"]
+    ])
+
+    # Distance to each centroid
+    dists = {c: np.linalg.norm(std_vec - cen) for c, cen in CLUSTER_CENTROIDS.items()}
+
+    # Softmax over negative distance (closer = higher weight)
+    neg_d = np.array([-d / SOFTMAX_TEMPERATURE for d in dists.values()])
+    neg_d = neg_d - neg_d.max()  # numerical stability
+    exp_d = np.exp(neg_d)
+    membership = exp_d / exp_d.sum()
+    membership = dict(zip(dists.keys(), membership))
+
+    # Blend the cluster weight tables by membership
+    blended = {"ofi": 0.0, "vwap": 0.0, "impact": 0.0,
+               "rvol_amp_scale": 0.0, "overall_scale": 0.0}
+    for c, m in membership.items():
+        cw = CLUSTER_WEIGHTS[c]
+        for k in blended:
+            blended[k] += m * cw[k]
+
+    blended["_membership"] = {c: round(float(m), 3) for c, m in membership.items()}
+    return blended
 
 
 # ══════════════════════════════════════════════
@@ -369,7 +591,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     sigma     = df["ret"].rolling(20).std().replace(0, np.nan)
     part_rate = (df["volume"] / adv).clip(0.01, 100)
     df["price_chg_abs"] = df["close"].diff().abs()
-    sqrt_impact = df["price_chg_abs"] / (sigma * np.sqrt(part_rate) + 1e-8)
+    # sigma is in return (%) units; multiply by close to convert to price ($) units
+    # so low-price and high-price stocks are on the same scale before z-scoring.
+    sqrt_impact = df["price_chg_abs"] / (sigma * df["close"] * np.sqrt(part_rate) + 1e-8)
     ie_std = sqrt_impact.rolling(20).std().replace(0, np.nan)
     df["impact_eff_z"] = (sqrt_impact - sqrt_impact.rolling(20).mean()) / ie_std
 
@@ -570,29 +794,38 @@ def fit_hmm(df: pd.DataFrame, n_states: int = 3,
 # 4. Signal Scoring — Fixed Adaptive Weights
 # ══════════════════════════════════════════════
 
-def compute_signal(df: pd.DataFrame) -> pd.DataFrame:
+def compute_signal(df: pd.DataFrame, ticker: str = None) -> pd.DataFrame:
     """
     Signal scoring formula:
 
     Step 1 — Normalize each feature to [-1, +1]:
       s_i = clip( (x_i - rolling_50_mean(x_i)) / rolling_50_std(x_i), -1, +1 )
 
-    Step 2 — Weighted sum (fixed adaptive weights, no training):
-      With main-flow:    raw_score = 0.50×flow + 0.15×ofi + 0.10×rvol
-                                   + 0.10×liq  + 0.10×vwap + 0.03×clv + 0.02×pers
-      Without main-flow: raw_score = 0.30×ofi  + 0.20×rvol + 0.20×liq
-                                   + 0.15×vwap + 0.10×clv  + 0.05×pers
+    Step 2 — Weighted sum + rvol amplifier:
+      With main-flow:
+        base_score = 0.45×flow + 0.35×ofi + 0.15×vwap + 0.05×impact
+        rvol_boost = clip((rvol - 1) × 0.10, -0.10, +0.10)
+        raw_score  = clip(base_score × (1 + rvol_boost), -1, +1)
 
-    Weight rationale:
-      - inst_net_z (flow): highest weight — only feature from real tick-level data
-      - ofi_z: second — directional OFI, but estimated from OHLCV
-      - liq_abs_z, rvol: volume-based signals, less directional bias
-      - vwap_dev, clv, pers: price-based, lowest weights (most correlated with trend)
+      Without main-flow:
+        base_score = 0.55×ofi + 0.30×vwap + 0.15×impact
+        raw_score  = clip(base_score × (1 + rvol_boost), -1, +1)
 
-    Step 3 — HMM state correction:
-      hmm_boost = +0.15 if state=accumulation
-                  -0.15 if state=distribution
-                   0.00 if state=neutral
+    Weight rationale (v4 — evidence-based from 13-ticker IC analysis on 1d data):
+      - inst_net_z (flow): highest weight — only real tick-level data
+      - ofi_z: raised 0.30→0.35 (with flow) / 0.50→0.55 (no flow)
+               sign consistent on 10/13 tickers at 1d — most reliable OHLCV feature
+      - vwap_dev: raised 0.10→0.15 — sign consistent 8/13 tickers
+      - impact_eff_z: kept small (0.05/0.15)
+      - rvol: REMOVED from fixed weights — sign inconsistent on 0/13 tickers at 1d.
+              Repurposed as multiplicative amplifier: high volume → amplify signal,
+              low volume → dampen signal. Max ±10% effect.
+      - liq_abs_z, clv, price_persistence: removed in v4 — IC < 0.03, sign inconsistent
+
+    Step 3 — HMM state correction (proportional, not flat):
+      hmm_boost = direction_sign × hmm_strength × 0.15
+      where hmm_strength ∈ [0,1] = |state inst_mean| / max(|labeled state inst_means|)
+      Neutral states → boost = 0. States that didn't pass t-test → labeled neutral.
 
     Step 4 — Final score and signal:
       final_score = clip(raw_score + hmm_boost, -1, +1)
@@ -612,31 +845,102 @@ def compute_signal(df: pd.DataFrame) -> pd.DataFrame:
         return ((s - mu) / sd).clip(-1, 1).fillna(0)
 
     s_ofi    = norm_clip(df["ofi_z"])
-    s_rvol   = norm_clip(df["rvol"] - 1)
     s_vwap   = norm_clip(df["vwap_dev"])
     s_impact = -norm_clip(df["impact_eff_z"])  # low impact = passive fill = bullish
 
-    # ── Fixed adaptive weights (v4)
-    has_flow = "inst_net_z" in df.columns and df["inst_net_z"].abs().sum() > 0
-    if has_flow:
-        s_flow  = norm_clip(df["inst_net_z"])
-        weights = WEIGHTS_WITH_FLOW
+    # ── rvol as multiplicative amplifier (not directional feature)
+    # IC sign is 0/13 consistent on 1d data — rvol has no stable direction.
+    # High volume amplifies other features; low volume dampens them.
+    rvol_raw   = df["rvol"].clip(0, 5).fillna(1.0)
+    rvol_boost = ((rvol_raw - 1) * RVOL_BOOST_SCALE).clip(-RVOL_BOOST_CLIP, RVOL_BOOST_CLIP)
+
+    # ── Cluster-based weights (v4) — checks WITH-FLOW cluster map first
+    # when flow is present, falls back to flat global WEIGHTS_WITH_FLOW
+    # for tickers not yet covered by the with-flow clustering (19 tickers
+    # validated as of 2026-06-30 — see WITH_FLOW_CLUSTER_WEIGHTS comment).
+    has_flow      = "inst_net_z" in df.columns and df["inst_net_z"].abs().sum() > 0
+    cluster       = TICKER_CLUSTER_MAP.get(ticker) if ticker else None
+    flow_cluster  = TICKER_CLUSTER_MAP_WITH_FLOW.get(ticker) if ticker else None
+
+    if has_flow and flow_cluster and flow_cluster in WITH_FLOW_CLUSTER_WEIGHTS:
+        fw = WITH_FLOW_CLUSTER_WEIGHTS[flow_cluster]
+        s_flow   = norm_clip(df["inst_net_z"])
+        weights  = {"flow": fw["flow"], "ofi": fw["ofi"], "vwap": fw["vwap"], "impact": fw["impact"]}
+        rvol_amp_scale = fw["rvol_amp_scale"]
+        overall_scale  = 1.0
+        coverage = (df["inst_net_z"].abs() > 0.01).mean()
+        print(f"[v4] Ticker {ticker} -> with-flow cluster {flow_cluster} "
+              f"(main-flow coverage: {coverage:.1%}) — using validated with-flow cluster weights")
+    elif has_flow:
+        # Ticker has flow data but isn't in the validated with-flow cluster
+        # map yet (only 19 tickers covered so far) — fall back to the flat
+        # global weights rather than guessing via soft assignment, since
+        # no soft-assignment system has been built for the 5-dim with-flow
+        # space (the existing CLUSTER_CENTROIDS soft assignment is 4-dim,
+        # no-flow only).
+        s_flow   = norm_clip(df["inst_net_z"])
+        weights  = WEIGHTS_WITH_FLOW
+        rvol_amp_scale = 1.0
+        overall_scale  = 1.0
         coverage = (df["inst_net_z"].abs() > 0.01).mean()
         print(f"[v4] Using flow-weighted scoring (main-flow coverage: {coverage:.1%})")
+        if ticker:
+            print(f"[v4] Ticker {ticker} not in TICKER_CLUSTER_MAP_WITH_FLOW "
+                  f"(only 19 tickers validated so far) — using global WEIGHTS_WITH_FLOW")
+    elif cluster and cluster in CLUSTER_WEIGHTS:
+        cw = CLUSTER_WEIGHTS[cluster]
+        s_flow   = pd.Series(0.0, index=df.index)
+        weights  = {"flow": 0.0, "ofi": cw["ofi"], "vwap": cw["vwap"], "impact": cw["impact"]}
+        rvol_amp_scale = cw["rvol_amp_scale"]
+        overall_scale  = cw["overall_scale"]
+        print(f"[v4] Ticker {ticker} -> cluster {cluster} — using IC-pattern cluster weights")
+    elif ticker:
+        # Unknown ticker (not in TICKER_CLUSTER_MAP) — use soft cluster
+        # assignment instead of falling back to a flat global default.
+        # Computes this ticker's own IC vector from the data we already
+        # have, then blends cluster weights via softmax distance.
+        s_flow = pd.Series(0.0, index=df.index)
+        try:
+            ic_vec = {}
+            for feat in ["ofi_z", "rvol", "vwap_dev", "impact_eff_z"]:
+                fwd_ret = df["close"].pct_change(6).shift(-6)
+                sub = pd.concat([df[feat], fwd_ret], axis=1).dropna()
+                if len(sub) >= 30:
+                    ic_vec[feat] = abs(sub.iloc[:, 0].corr(sub.iloc[:, 1], method="spearman"))
+                else:
+                    ic_vec[feat] = 0.0
+            blend = get_soft_cluster_weights(ic_vec)
+            weights = {"flow": 0.0, "ofi": blend["ofi"], "vwap": blend["vwap"],
+                       "impact": blend["impact"]}
+            rvol_amp_scale = blend["rvol_amp_scale"]
+            overall_scale  = blend["overall_scale"]
+            mem_str = ", ".join(f"{c}={m:.0%}" for c, m in blend["_membership"].items())
+            print(f"[v4] Ticker {ticker} not in TICKER_CLUSTER_MAP — "
+                  f"soft cluster assignment: {mem_str}")
+        except Exception as e:
+            print(f"[v4] Soft cluster assignment failed for {ticker} ({e}) — "
+                  f"using global WEIGHTS_NO_FLOW")
+            weights = WEIGHTS_NO_FLOW
+            rvol_amp_scale = 1.0
+            overall_scale  = 1.0
     else:
-        s_flow  = pd.Series(0.0, index=df.index)
-        weights = WEIGHTS_NO_FLOW
-        print(f"[v4] No main-flow data — using OHLCV-only weights")
+        s_flow   = pd.Series(0.0, index=df.index)
+        weights  = WEIGHTS_NO_FLOW
+        rvol_amp_scale = 1.0
+        overall_scale  = 1.0
+        print(f"[v4] No ticker provided — using global WEIGHTS_NO_FLOW")
 
-    print(f"[v4] Weights: " + " | ".join(f"{k}={v:.2f}" for k, v in weights.items() if v > 0))
+    print(f"[v4] Weights: " + " | ".join(f"{k}={v:.2f}" for k, v in weights.items() if v > 0)
+          + f" | rvol_amp_scale={rvol_amp_scale:.2f} | overall_scale={overall_scale:.2f}")
 
-    df["raw_score"] = (
+    base_score = (
         weights["flow"]   * s_flow   +
         weights["ofi"]    * s_ofi    +
-        weights["rvol"]   * s_rvol   +
         weights["vwap"]   * s_vwap   +
         weights["impact"] * s_impact
     )
+    scaled_rvol_boost = rvol_boost * rvol_amp_scale
+    df["raw_score"] = (base_score * (1 + scaled_rvol_boost) * overall_scale).clip(-1, 1)
 
     # HMM state correction — proportional to how statistically strong the
     # labeled state actually is (see fit_hmm's hmm_strength), not a flat
@@ -689,7 +993,7 @@ def save_output(df: pd.DataFrame, ticker: str, interval: str) -> str:
         "bvc_buy_frac",
         "hmm_state", "hmm_label",
         "raw_score", "hmm_boost", "final_score",
-        "signal", "confidence", "oos", "oos",
+        "signal", "confidence", "oos",
         "est_inst_participation", "delta_inventory", "cumulative_inventory",
     ]
     if "inst_net" in df.columns:
@@ -739,8 +1043,56 @@ def print_summary(df: pd.DataFrame, ticker: str, interval: str):
 # 6. Main
 # ══════════════════════════════════════════════
 
+def _merged_cache_path(ticker: str, interval: str, from_date, to_date) -> str:
+    safe_from = from_date or "2025-07-01"
+    safe_to   = to_date or "latest"
+    return os.path.join(RAW_CACHE_DIR, f"{ticker}_{interval}_{safe_from}_{safe_to}.csv")
+
+
+def load_merged_cached(ticker, interval, limit, from_date=None, to_date=None,
+                        use_cache=True, refresh=False):
+    """
+    Cache wrapper around the klines + compute_features + main-flow merge
+    pipeline. Independent cache from ic_analysis_with_flow.py's
+    ic_flow_cache/ — kept separate on purpose: sharing one cache dir
+    between two scripts would couple their data formats together (any
+    future change to compute_features()/merge_flow() in one script could
+    silently break the other reading a cached file it didn't produce),
+    and it wouldn't actually save fetches for genuinely new tickers
+    anyway — only ever helps when both scripts happen to touch the exact
+    same ticker, which isn't reliably the case as new tickers get added
+    to either workflow over time.
+
+    Returns (df, has_flow).
+    """
+    cache_file = _merged_cache_path(ticker, interval, from_date, to_date)
+
+    if use_cache and not refresh and os.path.exists(cache_file):
+        print(f"[CACHE HIT] {ticker} {interval}: {cache_file}")
+        df = pd.read_csv(cache_file, parse_dates=["datetime"])
+        has_flow = "inst_net_z" in df.columns and df["inst_net_z"].abs().sum() > 0
+        return df, has_flow
+
+    kl = load_klines(ticker, interval, limit, from_date=from_date, to_date=to_date)
+    if kl is None or len(kl) < 50:
+        return None, False
+
+    fl = load_main_flow(ticker, interval, limit, from_date=from_date, to_date=to_date)
+
+    df = compute_features(kl)
+    has_flow = fl is not None
+    if has_flow:
+        df = merge_flow(df, fl)
+
+    if use_cache:
+        df.to_csv(cache_file, index=False)
+        print(f"[CACHED] {ticker} {interval} -> {cache_file}")
+
+    return df, has_flow
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Institutional Flow Signal Generator v3")
+    parser = argparse.ArgumentParser(description="Institutional Flow Signal Generator v4")
     parser.add_argument("--ticker",     default="AAPL")
     parser.add_argument("--interval",   default="1d")
     parser.add_argument("--limit",      default=300, type=int)
@@ -753,6 +1105,10 @@ def main():
                              "HMM trained on data up to this date only, "
                              "then predicts on full dataset. "
                              "13F validation should use only post-train-end quarters.")
+    parser.add_argument("--refresh-data", action="store_true",
+                        help="忽略本地缓存，强制重新拉取 klines/main-flow")
+    parser.add_argument("--no-cache",     action="store_true",
+                        help="完全不使用缓存（既不读也不写）")
     args = parser.parse_args()
 
     ticker   = args.ticker.upper()
@@ -764,23 +1120,20 @@ def main():
         print(f"[OOS]   Train: ≤{args.train_end} | Validate: >{args.train_end}")
     print("-" * 50)
 
-    df        = load_klines(ticker, interval, args.limit,
-                            from_date=args.from_date, to_date=args.to_date)
-    flow_df   = load_main_flow(ticker, interval, args.limit,
-                               from_date=args.flow_from, to_date=args.to_date)
+    df, has_flow = load_merged_cached(ticker, interval, args.limit,
+                            from_date=args.from_date, to_date=args.to_date,
+                            use_cache=not args.no_cache, refresh=args.refresh_data)
     _         = load_large_trades(ticker, limit=200)
 
-    print("\n[Computing features...]")
-    df = compute_features(df)
-
-    if flow_df is not None:
-        df = merge_flow(df, flow_df)
+    if df is None:
+        print(f"[FATAL] Could not load data for {ticker}")
+        return None
 
     print("[Training HMM (fixed 3 states)...]")
     df = fit_hmm(df, n_states=args.hmm_states, train_end=args.train_end)
 
     print("[Scoring signals (fixed adaptive weights)...]")
-    df = compute_signal(df)
+    df = compute_signal(df, ticker=ticker)
 
     fpath = save_output(df, ticker, interval)
     print_summary(df, ticker, interval)
