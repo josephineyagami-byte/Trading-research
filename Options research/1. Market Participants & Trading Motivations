@@ -1,0 +1,221 @@
+# Module 1 — Market Participants & Trading Motivations
+
+## Why This Module?
+
+Before studying institutional money flow, we must first understand **who is trading** and **why they trade**.
+
+Different market participants can generate similar buying or selling pressure, but the economic meaning behind those trades can be completely different.
+
+Understanding market participants helps us interpret observed market activity more accurately.
+
+---
+
+# 1. Market Participants
+
+Financial markets consist of many different participants.
+
+Examples include:
+
+- Retail investors
+- Mutual funds
+- Hedge funds
+- Pension funds
+- Insurance companies
+- ETF managers
+- Dealers / Market Makers
+- High-frequency trading firms
+
+Although all of them submit buy and sell orders, they often trade for very different reasons.
+
+---
+
+# 2. Trading Motivation
+
+Instead of asking:
+
+> "Who is buying?"
+
+A better research question is:
+
+> "Why are they buying?"
+
+Different motivations produce similar order flow but represent different economic information.
+
+At the current stage we distinguish four broad motivations.
+
+## 2.1 Information-driven Trading
+
+The trader believes an asset is mispriced and expects future profit.
+
+Examples:
+
+- Hedge funds
+- Active mutual funds
+- Fundamental investors
+
+These trades are based on investment views.
+
+---
+
+## 2.2 Allocation-driven Trading
+
+The trader receives new capital and must allocate it according to predefined rules.
+
+Examples:
+
+- ETF inflows
+- Index funds
+- Pension contributions
+- Portfolio rebalancing
+
+These trades are not necessarily based on market forecasts.
+
+---
+
+## 2.3 Hedging-driven Trading
+
+The objective is risk reduction rather than expressing a market view.
+
+Examples:
+
+- Dealer hedging
+- Corporate hedging
+
+The resulting trades may have a significant market impact even though they do not represent new information.
+
+---
+
+## 2.4 Liquidity-driven Trading
+
+Trading occurs because capital needs to enter or leave the market.
+
+Examples:
+
+- Investor redemption
+- Cash management
+- Large shareholder transactions
+
+Again, these trades do not necessarily imply bullish or bearish expectations.
+
+---
+
+# 3. Dealers
+
+## Core Idea
+
+A dealer is primarily a liquidity provider rather than an investor.
+
+Their job is to facilitate transactions between market participants.
+
+Dealers generally do not seek directional exposure.
+
+Instead, they attempt to keep their net risk close to neutral.
+
+---
+
+## Example
+
+Customer buys a call option.
+
+↓
+
+Dealer sells the call.
+
+↓
+
+Dealer now has short call exposure.
+
+↓
+
+To reduce risk, the dealer purchases shares of the underlying stock.
+
+If the option's risk increases, the dealer may need to purchase additional shares.
+
+---
+
+# 4. Why Option Trading Can Affect Stock Prices
+
+Option trades themselves do not directly move stock prices.
+
+Instead, option trades change dealer inventory.
+
+Dealers then hedge their option exposure in the underlying stock.
+
+Therefore the transmission mechanism is
+
+Option Order Flow
+
+↓
+
+Dealer Inventory
+
+↓
+
+Dealer Hedging
+
+↓
+
+Stock Order Flow
+
+↓
+
+Stock Price
+
+---
+
+# 5. Important Distinction
+
+Dealer buying and institutional buying are not necessarily equivalent.
+
+Although dealers are financial institutions, their trading motivation is fundamentally different.
+
+Dealer purchases often arise from hedging requirements rather than investment decisions.
+
+For our current research, this distinction is conceptually important, although separating these flows is beyond the scope of the current model.
+
+---
+
+# Connection to Our Project
+
+Current objective:
+
+Estimate institutional buying pressure from observable market data.
+
+Current methodology does not distinguish among different sources of buying pressure.
+
+Therefore:
+
+Observed buying pressure may originate from
+
+- Information-driven trading
+- Allocation-driven trading
+- Dealer hedging
+- Other market mechanisms
+
+Recognizing these possibilities helps interpret model outputs more carefully, but the current project does not attempt to separate them.
+
+---
+
+# Key Takeaways
+
+1. Financial markets contain many different participant types.
+
+2. Similar buy orders may have very different underlying motivations.
+
+3. Dealers primarily provide liquidity and manage inventory risk.
+
+4. Option trading influences stock prices mainly through dealer hedging.
+
+5. The current project estimates aggregate buying pressure rather than identifying its precise origin.
+
+---
+
+# Open Questions
+
+1. How can option market activity influence stock prices?
+
+2. Under what circumstances can dealer hedging dominate market movements?
+
+3. How should money flow be interpreted when multiple trading motivations coexist?
+
+These questions will be explored in later modules.
