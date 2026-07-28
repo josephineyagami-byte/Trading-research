@@ -1,0 +1,407 @@
+# Module 6 — Institutional Position Estimation
+
+## Research Question
+
+If institutional positions cannot be directly observed,
+
+how can they be estimated using market data?
+
+---
+
+# Core Concepts
+
+## 1. The Target Variable
+
+The objective of the project is **not** to predict future returns.
+
+The true research target is
+
+> Institutional Position (Hidden State)
+
+Trading signals are generated only after estimating this hidden state.
+
+Pipeline
+
+Institution Position
+
+↓
+
+Estimated Institution Position
+
+↓
+
+Trading Signal
+
+---
+
+## 2. Position vs Trading
+
+Trading is an event.
+
+Position is a state.
+
+Example
+
+Institution buys shares today.
+
+The trade lasts seconds.
+
+The position may remain for weeks.
+
+Therefore,
+
+the hidden state is institutional positioning rather than individual trades.
+
+---
+
+## 3. Persistence
+
+Institutional portfolios rarely change instantaneously.
+
+Large institutions usually execute orders gradually over long periods.
+
+Therefore,
+
+hidden institutional states possess persistence.
+
+Examples
+
+Accumulation
+
+↓
+
+Accumulation
+
+↓
+
+Accumulation
+
+↓
+
+Neutral
+
+↓
+
+Distribution
+
+This persistence provides the economic justification for Hidden Markov Models.
+
+---
+
+## 4. Transition Probability
+
+Transition probabilities do not simply represent mathematical state transitions.
+
+Economically,
+
+they represent
+
+how difficult it is for institutions to change trading intentions.
+
+High persistence implies
+
+Accumulation
+
+↓
+
+Accumulation
+
+is much more likely than
+
+Accumulation
+
+↓
+
+Distribution.
+
+---
+
+## 5. Observable Features
+
+Observable market variables include
+
+- OFI
+- Main Flow
+- VWAP Deviation
+- Price Impact
+- Relative Volume
+
+These variables are not institutional positions.
+
+Instead,
+
+they are observable consequences of institutional trading activity.
+
+---
+
+## 6. Emission Distribution
+
+A hidden state does not produce one deterministic observation.
+
+Instead,
+
+each hidden state generates a distribution of possible observations.
+
+Example
+
+Accumulation may produce
+
+- Positive OFI
+- Positive Main Flow
+- Positive Price Impact
+
+but not always.
+
+Noise is a natural part of market observations.
+
+---
+
+## 7. Evidence Integration
+
+Individual features may conflict.
+
+Example
+
+OFI
+
+Positive
+
+Main Flow
+
+Negative
+
+VWAP
+
+Positive
+
+Price Impact
+
+Neutral
+
+Rather than trusting a single feature,
+
+the model integrates multiple imperfect observations to infer the most probable hidden state.
+
+---
+
+## 8. Execution Strategy
+
+Institutional trading is designed to minimize information leakage.
+
+Execution methods include
+
+- VWAP
+- TWAP
+- Iceberg Orders
+- Dark Pools
+
+Execution strategy determines
+
+how much observable evidence reaches the public market.
+
+Therefore,
+
+observable evidence depends not only on institutional intention,
+
+but also on execution style.
+
+---
+
+## 9. Observable Evidence Depends On Execution
+
+Institution Decision
+
+↓
+
+Execution Strategy
+
+↓
+
+Observable Market Features
+
+Different execution strategies leave different market footprints.
+
+Therefore,
+
+identical institutional intentions may produce very different observable data.
+
+---
+
+## 10. Model Limitations
+
+No statistical model can recover information that never appears in the data.
+
+If institutions successfully hide their activity,
+
+observable evidence becomes weak.
+
+This represents an information limitation,
+
+not necessarily a model limitation.
+
+---
+
+## 11. Institutional Footprints
+
+The model does not directly identify institutions.
+
+Instead,
+
+it estimates whether observable market behaviour is statistically consistent with institutional activity.
+
+Observable features therefore represent
+
+institutional footprints,
+
+not institutional actions themselves.
+
+---
+
+## 12. Hidden States
+
+HMM discovers statistical regimes.
+
+Researchers then interpret these regimes economically.
+
+Example
+
+State 1
+
+↓
+
+Positive OFI
+
+Positive Main Flow
+
+Positive VWAP
+
+↓
+
+Interpreted as
+
+Accumulation
+
+The interpretation is validated using external evidence such as 13F.
+
+---
+
+## 13. Why 13F Matters
+
+13F does not validate the HMM algorithm.
+
+Instead,
+
+it validates whether the economic interpretation of the hidden state is reasonable.
+
+If the estimated accumulation state corresponds to future increases in institutional holdings,
+
+the hidden-state interpretation becomes more credible.
+
+---
+
+## 14. Validation vs Backtesting
+
+13F Validation answers
+
+> Did we estimate institutional positions correctly?
+
+Backtesting answers
+
+> Can estimated institutional positions generate profitable trading strategies?
+
+These are fundamentally different questions.
+
+Research should validate hidden states before evaluating trading performance.
+
+---
+
+# Connection To Our Project
+
+Current project pipeline
+
+Observable Market Features
+
+↓
+
+HMM
+
+↓
+
+Estimated Institutional Position
+
+↓
+
+13F Validation
+
+↓
+
+Trading Strategy
+
+The HMM is therefore not a return prediction model.
+
+It is a hidden-state inference model.
+
+---
+
+# Key Insights
+
+1. Institutional position is the hidden target.
+
+2. Trades are events; positions are persistent states.
+
+3. HMM is appropriate because institutional behaviour exhibits persistence.
+
+4. Market observations are noisy evidence rather than direct observations.
+
+5. Observable evidence depends on execution strategy.
+
+6. Dark Pool and algorithmic execution reduce observable footprints.
+
+7. Model performance is limited by available information.
+
+8. HMM discovers statistical regimes, while researchers assign economic meaning.
+
+9. 13F validates the hidden-state interpretation rather than the algorithm itself.
+
+10. Backtesting evaluates trading usefulness, not research correctness.
+
+---
+
+# Research Reflection
+
+Institutional position estimation should be viewed as a hidden-state inference problem.
+
+Observable market features contain partial and noisy evidence.
+
+The role of the statistical model is not to discover institutions directly,
+
+but to integrate multiple pieces of evidence into the most probable hidden-state estimate.
+
+---
+
+# Open Questions
+
+1. Which execution strategies leave the strongest observable footprints?
+
+2. How much institutional activity remains invisible due to Dark Pool execution?
+
+3. Can option market information reveal hidden institutional activity that stock market features cannot?
+
+4. How should hidden states be defined and interpreted?
+
+5. What characteristics determine the information quality of individual stocks?
+
+---
+
+# References
+
+Concepts related to
+
+- Hidden Markov Models
+- Hidden State Estimation
+- Market Microstructure
+- Institutional Execution
+- Algorithmic Trading
+- Dark Pools
+- Evidence Integration
+- State-Space Modelling
