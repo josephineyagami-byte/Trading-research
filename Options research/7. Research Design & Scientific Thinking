@@ -1,0 +1,469 @@
+# Module 7 — Research Design & Scientific Thinking
+
+## Research Question
+
+How should quantitative research be designed?
+
+How do we distinguish genuine scientific research from simply improving model performance?
+
+---
+
+# Core Concepts
+
+## 1. Research Begins With Questions
+
+Research should begin with a well-defined question rather than a dataset.
+
+Poor question
+
+> Can option data improve prediction?
+
+Better question
+
+> Does option market activity contain incremental information about institutional positioning beyond stock market features?
+
+A good research question clearly defines
+
+- the hidden state
+- the observable evidence
+- the proposed mechanism
+- the validation objective
+
+---
+
+## 2. Observation vs Hypothesis
+
+These concepts should never be confused.
+
+Observation
+
+An empirical phenomenon directly observed from data.
+
+Example
+
+Different stocks exhibit different feature sensitivities.
+
+Hypothesis
+
+A proposed explanation for the observation.
+
+Example
+
+Liquidity changes execution behaviour, leading to heterogeneous feature responses.
+
+Observations generate hypotheses.
+
+Hypotheses require testing.
+
+---
+
+## 3. Research Pipeline
+
+A complete research process follows
+
+Observation
+
+↓
+
+Question
+
+↓
+
+Hypothesis
+
+↓
+
+Economic Mechanism
+
+↓
+
+Prediction
+
+↓
+
+Experiment
+
+↓
+
+Validation
+
+↓
+
+Conclusion
+
+Experiments should test hypotheses,
+
+not simply generate results.
+
+---
+
+## 4. Correlation Does Not Imply Mechanism
+
+Correlation only shows that two variables move together.
+
+Research attempts to explain
+
+why
+
+they move together.
+
+Example
+
+Institution Decision
+
+↓
+
+Institution Execution
+
+↓
+
+Large Trades
+
+↓
+
+Main Flow
+
+Main Flow does not cause institutional buying.
+
+Main Flow reflects institutional execution.
+
+---
+
+## 5. Economic Mechanism
+
+Every useful feature should have an identifiable economic mechanism.
+
+A useful thinking framework is
+
+Economic Decision
+
+↓
+
+Trading Behaviour
+
+↓
+
+Market Microstructure
+
+↓
+
+Observable Feature
+
+If this chain cannot be explained,
+
+the feature should be viewed cautiously.
+
+---
+
+## 6. Incremental Information
+
+Research asks
+
+Does this feature provide information beyond existing evidence?
+
+rather than
+
+Does this feature have a high correlation?
+
+Feature usefulness depends on
+
+additional information,
+
+not simply predictive power.
+
+---
+
+## 7. Feature-Driven vs Question-Driven Research
+
+Feature-driven research
+
+Feature
+
+↓
+
+Model
+
+↓
+
+Backtest
+
+Question-driven research
+
+Observation
+
+↓
+
+Research Question
+
+↓
+
+Mechanism
+
+↓
+
+Prediction
+
+↓
+
+Feature
+
+↓
+
+Experiment
+
+↓
+
+Validation
+
+The second approach produces scientific understanding rather than parameter optimization.
+
+---
+
+## 8. Falsification
+
+Research should actively attempt to disprove its own hypotheses.
+
+Instead of asking
+
+How can I prove my idea?
+
+Researchers ask
+
+How could my hypothesis fail?
+
+Examples
+
+- Different markets
+- Different time periods
+- Different sectors
+- Random grouping
+- Alternative explanations
+
+A hypothesis becomes stronger only after surviving repeated attempts at falsification.
+
+---
+
+## 9. Model Improvement Is Not The Goal
+
+Improved accuracy alone does not establish scientific value.
+
+Research should explain
+
+why
+
+performance improves.
+
+Mechanism should always precede optimization.
+
+---
+
+## 10. Research Questions Before Features
+
+Features are tools.
+
+Research questions are objectives.
+
+Example
+
+Instead of asking
+
+Should we add Dealer Gamma?
+
+Ask
+
+What hidden economic process does Dealer Gamma represent?
+
+Does it provide incremental information about institutional positioning?
+
+---
+
+## 11. Research Reduces Uncertainty
+
+Research does not exist to produce positive results.
+
+Research exists to reduce uncertainty.
+
+Negative results remain scientifically valuable if they eliminate incorrect explanations.
+
+Research gradually narrows the set of plausible mechanisms.
+
+---
+
+## 12. Choosing Good Research Questions
+
+A valuable research question satisfies four properties.
+
+### Clearly defined
+
+The scope is precise.
+
+### Testable
+
+Experiments can verify the hypothesis.
+
+### Mechanism-based
+
+A plausible economic explanation exists.
+
+### Incremental
+
+The answer contributes knowledge beyond existing work.
+
+---
+
+## 13. Great Research Starts With Confusion
+
+Most important research begins with observations that existing theories cannot fully explain.
+
+Typical cycle
+
+Observation
+
+↓
+
+Confusion
+
+↓
+
+Question
+
+↓
+
+Hypothesis
+
+↓
+
+Experiment
+
+↓
+
+Improved Understanding
+
+↓
+
+New Observation
+
+Research is therefore a continuous learning process rather than a linear procedure.
+
+---
+
+# Connection To Our Project
+
+Current project should be viewed as
+
+Observation
+
+↓
+
+Institutional trading leaves observable market footprints.
+
+↓
+
+Question
+
+Can institutional positions be inferred from observable market evidence?
+
+↓
+
+Hypothesis
+
+Observable features contain partial information about institutional positioning.
+
+↓
+
+Mechanism
+
+Institutional execution influences market microstructure.
+
+↓
+
+Evidence
+
+OFI
+
+Main Flow
+
+VWAP
+
+Price Impact
+
+Relative Volume
+
+↓
+
+Model
+
+HMM
+
+↓
+
+Validation
+
+13F
+
+↓
+
+Application
+
+Trading Strategy
+
+---
+
+# Key Insights
+
+1. Research starts with questions rather than datasets.
+
+2. Observations and hypotheses must be separated.
+
+3. Correlation does not explain market behaviour.
+
+4. Every feature requires an economic mechanism.
+
+5. Good experiments attempt to falsify hypotheses.
+
+6. Scientific value comes from explanation rather than optimization.
+
+7. Features should follow research questions, not the reverse.
+
+8. Research reduces uncertainty rather than proving certainty.
+
+9. Great research usually begins with unexplained observations.
+
+---
+
+# Research Reflection
+
+Machine learning models identify statistical patterns.
+
+Research attempts to explain why those patterns exist.
+
+A successful quantitative researcher should move beyond improving prediction accuracy and instead seek to understand the underlying economic process that generates observable market behaviour.
+
+---
+
+# Open Questions
+
+1. Which hidden economic processes are currently missing from our model?
+
+2. Which observable features provide genuinely new information?
+
+3. How can competing economic mechanisms be distinguished experimentally?
+
+4. Which stock characteristics explain heterogeneous feature responses?
+
+5. Under what market conditions do our hypotheses fail?
+
+---
+
+# References
+
+Concepts related to
+
+- Scientific Method
+- Research Design
+- Hypothesis Testing
+- Falsification
+- Feature Engineering
+- Market Microstructure
+- Institutional Trading
+- Hidden State Inference
