@@ -466,6 +466,22 @@ Latest signal:
 | Flow reliability | 1.00 |
 | Flow coverage 20 / 60 | 1.00 / 1.00 |
 
+Known event anchor:
+
+| Event | Detail |
+|---|---|
+| Public catalyst | U.S. government strategic investment in Intel |
+| Source | Intel announcement / SEC 8-K exhibit |
+| Date | 2025-08-22 announcement; 2025-08-25 8-K filing |
+| Deal terms | About $8.9B investment, 433.3M primary shares at $20.47/share |
+| Ownership impact | Equivalent to a 9.9% stake, according to Intel's announcement |
+| Model relevance | This creates an event-driven regime where raw sell pressure can reflect turnover/profit-taking rather than clean bearish distribution |
+
+Source links:
+
+- Intel Newsroom: [Intel and Trump Administration Reach Historic Agreement to Accelerate American Technology and Manufacturing Leadership](https://newsroom.intel.com/corporate/intel-and-trump-administration-reach-historic-agreement)
+- SEC exhibit: [Intel 8-K Exhibit 99.1, August 2025](https://www.sec.gov/Archives/edgar/data/50863/000005086325000129/a08222025form8-kex991.htm)
+
 Signal counts:
 
 | Signal Type | Count |
@@ -539,6 +555,21 @@ WTT setup breakdown:
 INTC interpretation:
 
 INTC is currently the best example of event-driven supply absorption. The model often sees raw distribution, but price and relative behavior do not confirm a clean short. This is exactly why raw distribution should not automatically become bearish.
+
+This is consistent with the known government-stake event. A strategic public-sector investment can create a major re-pricing regime: old holders may sell into strength, short-term traders may take profit, and new buyers may absorb that supply. In that environment, `raw_distribution_pressure` does not necessarily mean institutions are abandoning the stock. The more important question is whether price breaks down or whether supply is absorbed.
+
+The model output lines up with that interpretation:
+
+- The latest flow regime is `raw_distribution_pressure`, showing active sell pressure.
+- The latest distribution context is `supply_absorption`, meaning the sell pressure has not translated into clean bearish price confirmation.
+- The latest relative regime is `short_term_relative_rebound` versus `SMH`, which argues against treating the tape as a confirmed short.
+- Short regime is `stable_short_pressure`, so short activity is not confirming a high-conviction bearish setup.
+- Flow reliability and 20/60 bar flow coverage are both 1.00, so this is not simply a missing-data artifact.
+- Event Study after accumulation signals is strongly positive from 3D to 20D, matching the idea that confirmed accumulation phases captured the post-event upside regime.
+
+Important limitation:
+
+The model is not proving that the U.S. government purchase itself caused every later signal. It is saying the market behavior after the known event is consistent with an event-driven absorption/re-pricing regime. This is why the PM-facing interpretation should say "model evidence is consistent with the known strategic investment catalyst," not "the model proves government buying."
 
 The strongest INTC evidence is on the long side:
 
