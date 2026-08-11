@@ -273,6 +273,93 @@ Avoid language like:
 - Values close to 1.0 are strong.
 - Values below around 0.5 mean flow-driven conclusions are less reliable.
 
+### Score Calculation
+
+The model uses separate long and short engines. The score fields are not probabilities. They are normalized rule-based evidence scores between 0 and 1, then combined into a signed final score.
+
+Core normalized inputs:
+
+| Component | Meaning | Direction |
+|---|---|---|
+| `flow_score` | 5-bar institutional flow pressure, blended with standardized flow | Positive supports long, negative supports short |
+| `ofi_z` | order-flow imbalance z-score | Positive supports long |
+| `vwap_dev` | price deviation versus rolling VWAP | Positive supports long |
+| `impact_eff_z` | impact/efficiency measure | Inverted in the model, so lower adverse impact supports long |
+| `rvol` | relative volume | Boosts or dampens base score |
+| `short_context_score` | short-volume context | Positive or negative adjustment |
+| `darkpool_context_score` | delayed darkpool context | Small positive or negative adjustment |
+| `hmm_boost` | HMM state adjustment | Small trend-state adjustment |
+
+Current base weights:
+
+| Component | Weight Logic |
+|---|---|
+| Flow | Up to 35%, scaled by `flow_reliability` |
+| OFI | 45% of remaining non-flow weight |
+| VWAP | 35% of remaining non-flow weight |
+| Impact | 20% of remaining non-flow weight |
+
+Simplified formula:
+
+```text
+flow_weight = 0.35 * flow_reliability
+non_flow_weight = 1 - flow_weight
+
+base_score =
+    flow_weight * flow_score
+  + non_flow_weight * 0.45 * normalized_ofi
+  + non_flow_weight * 0.35 * normalized_vwap
+  + non_flow_weight * 0.20 * normalized_impact
+
+base_score is then adjusted by relative volume.
+```
+
+Then the model separates long and short evidence:
+
+```text
+long_base_score =
+    positive part of flow/ofi/vwap/impact evidence
+    + positive context score
+
+short_base_score =
+    negative part of flow/ofi/vwap/impact evidence
+    + negative context score
+
+long_score = long_base_score + positive HMM boost
+short_score = short_base_score + negative HMM boost
+
+final_score = long_score - short_score
+```
+
+Interpretation:
+
+| Field | Meaning |
+|---|---|
+| `long_score` | Strength of bullish evidence |
+| `short_score` | Strength of bearish evidence |
+| `final_score` | Net directional score, positive means long evidence dominates, negative means short evidence dominates |
+
+Example: INTC latest bar on 2026-08-07:
+
+| Field | Value |
+|---|---:|
+| `long_score` | 0.566 |
+| `short_score` | 0.094 |
+| `final_score` | +0.472 |
+| `context_score` | 0.000 |
+| `hmm_boost` | 0.000 |
+| `flow_score` | -0.279 |
+| `flow_net_current` | -76.9M |
+| `flow_net_5` | -129.3M |
+
+Because `context_score` and `hmm_boost` are both zero on this bar:
+
+```text
+final_score = 0.566 - 0.094 = +0.472
+```
+
+This does not mean there is no selling. In fact, `flow_score` is negative and the flow regime is `raw_distribution_pressure`. The positive final score comes from stronger non-flow bullish evidence, while the model still labels the trade state as `watch_long` rather than confirmed long because raw flow remains negative and the distribution context is `supply_absorption`.
+
 ## 5. Signal Hierarchy
 
 The model separates three levels:
