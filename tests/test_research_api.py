@@ -187,6 +187,26 @@ class ResearchAPITests(unittest.TestCase):
         self.assertEqual(fetch.call_args_list[0].args[1]["from"], "2024-10-20")
         self.assertEqual(fetch.call_count, 2)
 
+    def test_missing_benchmark_quotes_are_not_forward_filled_into_confirmation(self):
+        import signal_generator_v5_3 as v53
+        dates = pd.date_range("2025-01-01", periods=35)
+        stock = pd.DataFrame({"datetime": dates, "close": range(100, 135)})
+        benchmark = pd.DataFrame({"datetime": dates[:31], "close": range(100, 131)})
+        with patch.object(v53.v4, "load_klines", return_value=benchmark):
+            out = v53.merge_relative_strength(stock, "MSFT", "1d", 300)
+        self.assertTrue(out.relative_regime.iloc[-4:].eq("relative_unavailable").all())
+        self.assertTrue(out.rel_ret_5.iloc[-4:].isna().all())
+        self.assertEqual(out.relative_regime.iloc[30], "relative_mixed")
+
+    def test_duplicate_benchmark_keys_cannot_multiply_stock_rows(self):
+        import signal_generator_v5_3 as v53
+        dates = pd.date_range("2025-01-01", periods=2)
+        stock = pd.DataFrame({"datetime": dates, "close": [100, 101]})
+        benchmark = pd.DataFrame({"datetime": [dates[0], dates[0]], "close": [100, 102]})
+        with patch.object(v53.v4, "load_klines", return_value=benchmark):
+            with self.assertRaises(pd.errors.MergeError):
+                v53.merge_relative_strength(stock, "MSFT", "1d", 300)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -52,6 +52,7 @@ import pandas as pd
 from scipy import stats
 from market_data_quality import regular_session_mask, unique_timestamp_bars
 from research_api import ResearchAPIError, fetch_api
+from flow_checkpoints import flow_page
 
 warnings.filterwarnings("ignore")
 
@@ -310,6 +311,11 @@ def fetch(path: str, params: dict = None):
     return fetch_api(BASE_URL, path, params=params, timeout=TIMEOUT)
 
 
+def _date_end_exclusive(value):
+    from datetime import timedelta
+    return (datetime.strptime(value, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 def load_klines(ticker, interval, limit, from_date=None, to_date=None):
     interval_map = {
         "1m":  (1,"minute"), "5m":  (5,"minute"),
@@ -330,7 +336,7 @@ def load_klines(ticker, interval, limit, from_date=None, to_date=None):
 
     raw = fetch("/api/klines", {
         "ticker": ticker, "multiplier": multiplier, "timespan": timespan,
-        "from": date_from, "to": date_to,
+        "from": date_from, "to": _date_end_exclusive(date_to),
     })
     if raw is None:
         sys.exit("[FATAL] Cannot fetch klines")
@@ -369,26 +375,27 @@ def load_klines(ticker, interval, limit, from_date=None, to_date=None):
     return df
 
 
-def load_main_flow(ticker, interval, limit, from_date=None, to_date=None):
+def load_main_flow(ticker, interval, limit, from_date=None, to_date=None, checkpoint_dir=None, chunk_days=30):
     from datetime import timedelta
+    if not isinstance(chunk_days, int) or isinstance(chunk_days, bool) or not 1 <= chunk_days <= 31:
+        raise ValueError("Flow chunk_days must be an integer from 1 to 31")
     MAINFLOW_START = datetime(2025, 7, 1)  # default only; not a permanent source boundary
-    dt_to   = datetime.strptime(to_date,   "%Y-%m-%d") if to_date   else datetime.now()
+    dt_to   = datetime.strptime(_date_end_exclusive(to_date or datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d")
     dt_from = datetime.strptime(from_date, "%Y-%m-%d") if from_date else MAINFLOW_START
 
     all_rows = []
     cursor = dt_from
     while cursor < dt_to:
-        next_cursor = min(cursor + timedelta(days=30), dt_to)
+        next_cursor = min(cursor + timedelta(days=chunk_days), dt_to)
         seg_from = cursor.strftime("%Y-%m-%d")
         seg_to   = next_cursor.strftime("%Y-%m-%d")
-        raw = fetch("/api/main-flow", {
+        arr, source = flow_page(BASE_URL, {
             "ticker": ticker, "multiplier": 5, "timespan": "minute",
             "from": seg_from, "to": seg_to,
-        })
-        if raw:
-            arr = raw if isinstance(raw, list) else (raw.get("bars") or raw.get("data") or [])
-            all_rows.extend(arr)
-            print(f"  main-flow {seg_from} → {seg_to}: {len(arr)} bars")
+            "super_min": 500_000, "large_min": 100_000, "mid_min": 20_000,
+        }, fetch, checkpoint_dir=checkpoint_dir)
+        all_rows.extend(arr)
+        print(f"  main-flow {seg_from} → {seg_to}: {len(arr)} bars [{source}]", flush=True)
         cursor = next_cursor
 
     if not all_rows:

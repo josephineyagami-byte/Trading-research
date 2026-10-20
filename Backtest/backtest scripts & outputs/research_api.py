@@ -95,7 +95,10 @@ def fetch_api(base_url: str, path: str, params: dict | None = None, timeout: flo
         if not isinstance(payload, (dict, list)):
             raise ValueError("Unexpected API payload type")
         return payload
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, ValueError) as exc:
         # Do not echo exception URLs, response bodies or cookie values.
-        print("[WARN] Research API request failed; source data is unavailable")
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        detail = f"HTTP {status}" if isinstance(status, int) else type(exc).__name__
+        print(f"[WARN] Research API request failed ({detail}); source data is unavailable", flush=True)
         return None

@@ -220,3 +220,68 @@ validated against the server: without the secure connection, no login attempt
 using those credentials or full two-year collection was performed. The user
 was asked to establish the tunnel. Do not describe local/mocked tests as a
 successful production connection.
+
+### Live Connection and Date-Boundary Verification
+
+Later on 2026-10-20 the user established the loopback tunnel. The health endpoint
+returned HTTP 200, normal existing-account login succeeded, and protected K-line
+and flow requests returned data. No credentials were logged or committed.
+
+A live boundary check found an additional bug: the date-only `to` value was
+interpreted as midnight at the beginning of that day. A request ending
+`2026-10-19` returned 499 MSFT daily bars ending on October 16; requesting through
+`2026-10-20` included the October 19 daily bar. The research client's date-only
+`--to-date` is now inclusive, with the transport bound advanced to the following
+midnight. This correction returned 500 daily bars for the requested two-year
+window. A full UTC-day flow request for October 19 returned 190 five-minute rows
+before the model's regular-session filter; an empty same-date request was not
+evidence that the day lacked flow data.
+
+The first long run returned 18 monthly flow pages before being interrupted.
+A subsequent monthly request failed; do not interpret these attempts as a
+completed two-year model result. The client now supports smaller requests with
+`--flow-chunk-days 7` and opt-in `--flow-checkpoint-dir` storage. Successful pages
+are written atomically with source, exact parameters, thresholds and fetch time;
+cache hits are explicitly labeled `checkpoint`, not new API reads. Failed or
+unrecognized responses cannot create zero-filled checkpoints. Error messages
+identify HTTP status or exception type without printing URLs, bodies or secrets.
+
+To resume an interrupted download, retain the same checkpoint directory and
+parameters. To request entirely new snapshots, use a new directory. The
+`--refresh-data` and `--no-cache` flags concern the merged model cache; an
+explicit flow checkpoint directory is a separate opt-in snapshot. Chunk width
+is recorded in the page date bounds. Source tick-rule classification restarts
+at query boundaries, so runs with different chunk widths are not guaranteed
+bit-for-bit identical; retain the width when comparing runs.
+Merged-cache filenames now include the corrected date-boundary schema and chunk
+width so an older snapshot cannot silently bypass this fix or option.
+
+### Completed Fresh MSFT Baseline
+
+The dated 2024-10-20 through 2026-10-19 request completed successfully using
+seven-day pages: 105 successful page snapshots contained 90,304 five-minute flow
+rows, and the final price dataset contained 500 daily bars. After the legacy
+clock-session/outlier filters, 472 daily dates had flow inputs. There were 28
+price dates without flow, spanning 2026-09-02 through 2026-10-12; recent 20-bar
+flow presence was only 25%. These are source gaps, not authentication failures,
+and neither the output nor its model rating should be called fully complete.
+
+The QQQ benchmark ended on 2026-10-13. Inspection found that pandas' default
+`pct_change` behavior forward-filled missing benchmark quotes and gave the last
+four price dates an apparently available relative regime. Returns now use
+`fill_method=None`, and duplicate benchmark keys cannot expand stock rows.
+Unavailable benchmark dates stay `relative_unavailable`. The model was rerun
+successfully with this correction, reusing the same 105 explicitly labeled flow
+checkpoints instead of repeating heavy database requests. The merged-cache key
+also marks the no-forward-fill schema, and CSVs retain `hmm_strength` for replay.
+
+The short-volume source ended on 2026-08-04; delayed darkpool inputs began in
+2025-08 and ended in 2026-09. Full-sample HMM fitting and these source limitations
+remain: this is a new descriptive research baseline, not a validated backtest,
+proof of actual institutional holdings, or an exact recovery of the missing
+original CSV. No signal was forced positive. The raw and filtered signed dollar
+flow and the model's cumulative share-change proxy are different quantities.
+
+The actual downloaded pages, CSVs and detailed source-quality audit are retained
+locally in ignored output/checkpoint folders, not redistributed in this public
+fork. No production website release was performed for this research change.

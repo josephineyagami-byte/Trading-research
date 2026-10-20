@@ -228,16 +228,16 @@ def merge_relative_strength(
         return df
 
     bench_sub = bench_df[["datetime", "close"]].rename(columns={"close": "benchmark_close"})
-    out = df.merge(bench_sub, on="datetime", how="left")
-    ret5 = out["close"].pct_change(5)
-    ret20 = out["close"].pct_change(20)
-    bret5 = out["benchmark_close"].pct_change(5)
-    bret20 = out["benchmark_close"].pct_change(20)
+    out = df.merge(bench_sub, on="datetime", how="left", validate="one_to_one")
+    ret5 = out["close"].pct_change(5, fill_method=None)
+    ret20 = out["close"].pct_change(20, fill_method=None)
+    bret5 = out["benchmark_close"].pct_change(5, fill_method=None)
+    bret20 = out["benchmark_close"].pct_change(20, fill_method=None)
     out["rel_ret_5"] = ret5 - bret5
     out["rel_ret_20"] = ret20 - bret20
 
     rel = pd.Series("relative_unavailable", index=out.index, dtype=object)
-    available = out["rel_ret_5"].notna() & out["rel_ret_20"].notna()
+    available = out["benchmark_close"].notna() & out["rel_ret_5"].notna() & out["rel_ret_20"].notna()
     weak = (out["rel_ret_5"] < -0.01) & (out["rel_ret_20"] < -0.02)
     strong = (out["rel_ret_5"] > 0.01) & (out["rel_ret_20"] > 0.02)
     pullback = (out["rel_ret_5"] < -0.01) & (out["rel_ret_20"] > 0.02)
@@ -994,7 +994,7 @@ def compute_signal(df: pd.DataFrame, ticker: str = None) -> pd.DataFrame:
         )
     ]
 
-    # Confidence is still a calibrated rule score, not a predicted probability.
+    # Confidence is a heuristic rule score, not a calibrated probability.
     selected_strength = pd.Series(np.maximum(df["long_score"], df["short_score"]), index=df.index)
     selected_strength = selected_strength.where(
         ~df["trade_signal"].isin(["long", "watch_long"]),
@@ -1075,10 +1075,10 @@ def compute_signal(df: pd.DataFrame, ticker: str = None) -> pd.DataFrame:
     return df
 
 
-def _merged_cache_path(ticker: str, interval: str, from_date, to_date) -> str:
+def _merged_cache_path(ticker: str, interval: str, from_date, to_date, flow_chunk_days=30) -> str:
     safe_from = from_date or "2025-07-01"
     safe_to = to_date or "latest"
-    return os.path.join(RAW_CACHE_DIR, f"{ticker}_{interval}_{safe_from}_{safe_to}_v5_3.csv")
+    return os.path.join(RAW_CACHE_DIR, f"{ticker}_{interval}_{safe_from}_{safe_to}_v5_3_dates2_nofill_flow{flow_chunk_days}.csv")
 
 
 def load_merged_cached(
@@ -1090,8 +1090,10 @@ def load_merged_cached(
     use_cache=True,
     refresh=False,
     include_context=True,
+    flow_checkpoint_dir=None,
+    flow_chunk_days=30,
 ):
-    cache_file = _merged_cache_path(ticker, interval, from_date, to_date)
+    cache_file = _merged_cache_path(ticker, interval, from_date, to_date, flow_chunk_days)
     if use_cache and not refresh and os.path.exists(cache_file):
         print(f"[CACHE HIT] {ticker} {interval}: {cache_file}")
         df = pd.read_csv(cache_file, parse_dates=["datetime"])
@@ -1102,7 +1104,8 @@ def load_merged_cached(
     if kl is None or len(kl) < 50:
         return None, False
 
-    fl = v4.load_main_flow(ticker, interval, limit, from_date=from_date, to_date=to_date)
+    fl = v4.load_main_flow(ticker, interval, limit, from_date=from_date, to_date=to_date,
+                          checkpoint_dir=flow_checkpoint_dir, chunk_days=flow_chunk_days)
     df = v4.compute_features(kl)
     df = merge_relative_strength(df, ticker, interval, limit, from_date=from_date, to_date=to_date)
     has_flow = fl is not None
@@ -1131,7 +1134,7 @@ def save_output(df: pd.DataFrame, ticker: str, interval: str) -> str:
         "vwap_roll", "vwap_dev",
         "ofi_z", "rvol", "impact_eff_z",
         "bvc_buy_frac",
-        "hmm_state", "hmm_label",
+        "hmm_state", "hmm_label", "hmm_strength",
         "base_score", "long_base_score", "short_base_score",
         "context_score", "short_context_score", "darkpool_context_score",
         "raw_score", "signed_score_pre_hmm", "hmm_boost", "final_score",
@@ -1234,6 +1237,9 @@ def main():
     parser.add_argument("--api-base-url", help="HTTPS API base URL or loopback tunnel URL")
     parser.add_argument("--credentials-file", help="Private local account JSON; never pass a password on the command line")
     parser.add_argument("--api-username", help="Select one account when the private JSON contains multiple accounts")
+    parser.add_argument("--flow-checkpoint-dir", help="Opt-in directory to save and resume completed flow pages; use a new directory for fresh data")
+    parser.add_argument("--flow-chunk-days", type=int, default=30, choices=range(1, 32),
+                        help="Days per flow request; smaller chunks reduce per-query load (default: 30)")
     args = parser.parse_args()
 
     if args.api_base_url:
@@ -1261,6 +1267,8 @@ def main():
         use_cache=not args.no_cache,
         refresh=args.refresh_data,
         include_context=not args.no_context,
+        flow_checkpoint_dir=args.flow_checkpoint_dir,
+        flow_chunk_days=args.flow_chunk_days,
     )
     _ = v4.load_large_trades(ticker, limit=200)
     if df is None:
