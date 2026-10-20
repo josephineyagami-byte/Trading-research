@@ -112,8 +112,9 @@ Re-summing the saved changes matches all six saved cumulative series within
 numerical tolerance. Thus the reproduced negative MSFT endpoint is not a
 simple cumulative-sum sign error. Different saved MSFT runs also change sign;
 they must not be pooled or presented as the same calibrated holdings series.
-This does not reproduce or validate the user's current two-year run, whose
-input/output and exact model version have not yet been provided.
+This does not reproduce or validate the user's current two-year run. The user
+does not have that CSV, so further work should use a clearly identified fresh
+run rather than requiring a lost file or claiming an exact reproduction.
 
 Regression coverage includes negative relative changes, explicit anchors,
 missing values, chronology, duplicates, units, DST, page overlap, merge grain,
@@ -122,9 +123,10 @@ fixtures are software checks, not financial evidence.
 
 ## Before Website Integration
 
-1. Obtain the actual two-year run's CSV, dates, ticker, model version, interval,
-   raw-flow unit contract, adjustment settings, and source coverage. Inspect
-   omitted sessions and splits before rerunning.
+1. If the original CSV is unavailable, acquire a fresh dated two-year dataset
+   with explicit ticker, model version, interval, raw-flow unit contract,
+   adjustment settings and source coverage. Inspect omitted sessions and
+   splits; do not call a new run an exact reproduction of the original.
 2. Separate trade recommendations from latent flow/inventory inference. Any
    new estimator must be calibrated against independent, scope-matched data.
 3. Replace full-sample HMM and run-wide quality fitting with causal/walk-forward
@@ -136,3 +138,44 @@ fixtures are software checks, not financial evidence.
    Do not label the curve as verified main-fund capital or live WebSocket flow.
 
 This handoff does not change the running US_stock website or add trading actions.
+
+## Fresh Two-Year Data Access
+
+Read-only checks on 2026-10-20 found that the configured server's `/healthz`
+responded HTTP 200, while `/api/klines` (MSFT, 2024-10-20 to 2026-10-19) and
+`/api/main-flow` (one recent session) both responded HTTP 401 with
+`not authenticated`. No authenticated two-year download or refit was completed.
+This is an application login issue, not evidence that all data is absent, nor
+a determination about a market-data vendor's WebSocket subscription.
+
+The research loader now supports the website's existing **`auth` session
+cookie**, supplied explicitly as `US_STOCK_AUTH_COOKIE` in the local process.
+It does not read browser cookies, create accounts, retrieve passwords, sign JWTs,
+or disable server authentication. Do not send credentials in chat, URLs, CSVs,
+notebooks or commits. Session values expire and must be renewed through normal
+authorized login; the cookie is not a market-data provider API key.
+
+Credentialed requests require an HTTPS API URL or a loopback tunnel such as
+`http://127.0.0.1:8000`. They are refused for public plaintext HTTP. Redirects
+are not followed, and errors do not print cookie values or response bodies.
+HTTP 401/403/429 abort a fresh run instead of being downgraded to "no flow";
+benchmark lookup also propagates these errors. A cache-only run is still only
+historical cached data and must not be represented as newly downloaded data.
+
+Explicit `--from-date` is no longer silently clamped to 2025-07-01. That date
+remains the legacy default when no start is supplied, not a verified permanent
+limit on the server's current coverage. Empty responses for older dates remain
+unknown coverage, not observed zero flows. Verify returned dates before making
+any two-year claim.
+
+After authorized access is configured locally, a fresh run can use:
+
+```bash
+.venv/bin/python 'Backtest/backtest scripts & outputs/signal_generator_v5_3.py' \
+  --ticker MSFT --interval 1d \
+  --from-date 2024-10-20 --to-date 2026-10-19 \
+  --no-cache --refresh-data
+```
+
+The date range ends on a completed session; reruns should use explicitly dated
+windows. This command is not proof that two years of raw flow actually exists.

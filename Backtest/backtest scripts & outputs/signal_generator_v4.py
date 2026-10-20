@@ -49,9 +49,9 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import requests
 from scipy import stats
 from market_data_quality import regular_session_mask, unique_timestamp_bars
+from research_api import ResearchAPIError, fetch_api
 
 warnings.filterwarnings("ignore")
 
@@ -307,14 +307,7 @@ def get_soft_cluster_weights(ic_vector: dict) -> dict:
 # ══════════════════════════════════════════════
 
 def fetch(path: str, params: dict = None):
-    url = BASE_URL + path
-    try:
-        r = requests.get(url, params=params, timeout=TIMEOUT)
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.RequestException as e:
-        print(f"[ERROR] fetch {path}: {e}")
-        return None
+    return fetch_api(BASE_URL, path, params=params, timeout=TIMEOUT)
 
 
 def load_klines(ticker, interval, limit, from_date=None, to_date=None):
@@ -378,12 +371,9 @@ def load_klines(ticker, interval, limit, from_date=None, to_date=None):
 
 def load_main_flow(ticker, interval, limit, from_date=None, to_date=None):
     from datetime import timedelta
-    MAINFLOW_START = datetime(2025, 7, 1)  # confirmed via export tool preview
+    MAINFLOW_START = datetime(2025, 7, 1)  # default only; not a permanent source boundary
     dt_to   = datetime.strptime(to_date,   "%Y-%m-%d") if to_date   else datetime.now()
     dt_from = datetime.strptime(from_date, "%Y-%m-%d") if from_date else MAINFLOW_START
-    if dt_from < MAINFLOW_START:
-        print(f"[INFO] main-flow starts {MAINFLOW_START.date()}, adjusting from-date")
-        dt_from = MAINFLOW_START
 
     all_rows = []
     cursor = dt_from

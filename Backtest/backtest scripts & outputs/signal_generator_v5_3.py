@@ -212,6 +212,8 @@ def merge_relative_strength(
 
     try:
         bench_df = v4.load_klines(bench, interval, limit, from_date=from_date, to_date=to_date)
+    except v4.ResearchAPIError:
+        raise
     except SystemExit:
         print(f"[WARN] benchmark klines unavailable for {ticker} vs {bench}")
         return df
