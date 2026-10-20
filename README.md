@@ -1,5 +1,13 @@
 # Quant Trading Research - Latent Institutional Flow & Inventory Dynamics Research
 
+## Current Handoff Update
+
+The 2026-10-20 [inventory diagnostics update](Backtest/INVENTORY_DIAGNOSTICS.md)
+separates cumulative model changes from actual holdings, adds a 20-bar flow
+pressure indicator, and includes reproducible historical audits and regression
+tests. Negative relative changes are valid; absolute institutional holdings are
+not identified by this model. This is research code, not a live trading system.
+
 ## Overview
 
 This research does not aim to perform traditional short-term price prediction, nor does it attempt to forecast next-second price movements using limit order book dynamics. Instead, the objective is to address a more fundamental problem in modern market microstructure research:

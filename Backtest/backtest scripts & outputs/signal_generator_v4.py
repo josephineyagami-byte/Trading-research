@@ -51,13 +51,14 @@ import numpy as np
 import pandas as pd
 import requests
 from scipy import stats
+from market_data_quality import regular_session_mask, unique_timestamp_bars
 
 warnings.filterwarnings("ignore")
 
 # ──────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────
-BASE_URL   = "http://104.192.7.156:8000"
+BASE_URL   = os.environ.get("US_STOCK_API_BASE_URL", "http://74.208.124.247:8000").rstrip("/")
 TIMEOUT    = 60
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 RAW_CACHE_DIR = os.path.join(os.path.dirname(__file__), "raw_data_cache")
@@ -359,15 +360,15 @@ def load_klines(ticker, interval, limit, from_date=None, to_date=None):
                          "close": float(b.get("c") or b.get("close")),
                          "volume":float(b.get("v") or b.get("volume"))})
 
-    df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+    df = unique_timestamp_bars(pd.DataFrame(rows))
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
 
     # Filter to market hours: 9:35–16:00 ET (9:30–9:35 excluded = opening auction noise)
     if timespan in ("minute", "hour"):
         before = len(df)
-        df["_et"] = df["datetime"] - pd.Timedelta(hours=4)
-        df["_hm"] = df["_et"].dt.hour * 100 + df["_et"].dt.minute
-        df = df[(df["_hm"] >= 935) & (df["_hm"] < 1600)].drop(columns=["_hm","_et"]).reset_index(drop=True)
+        df = df.loc[regular_session_mask(df["timestamp"])].reset_index(drop=True)
+        if df.empty:
+            raise ValueError("No regular-session klines after the auction filter")
         print(f"[OK] Klines (9:35–16:00 ET): {len(df)} bars (removed {before-len(df)})  "
               f"[{df['datetime'].iloc[0]} → {df['datetime'].iloc[-1]}]")
     else:
@@ -411,17 +412,19 @@ def load_main_flow(ticker, interval, limit, from_date=None, to_date=None):
         l_net  = float(b.get("large_buy",  0)) - float(b.get("large_sell",  0))
         m_net  = float(b.get("mid_buy",    0)) - float(b.get("mid_sell",    0))
         s_net  = float(b.get("small_buy",  0)) - float(b.get("small_sell",  0))
-        dt_utc = pd.Timestamp(int(t), unit="ms")
-        dt_et  = dt_utc - pd.Timedelta(hours=4)
-        # Filter opening auction (9:30–9:35 ET) and outliers
-        is_auction = (dt_et.hour == 9 and dt_et.minute <= 35)
+        # Session filtering is applied below using the ET timezone, including DST.
         is_outlier = abs(xl_net) > 50_000_000
-        if is_auction or is_outlier:
+        if is_outlier:
             continue
         rows.append({"timestamp": int(t), "xl_net": xl_net,
                      "l_net": l_net, "m_net": m_net, "s_net": s_net})
 
-    df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+    if not rows:
+        return None
+    df = unique_timestamp_bars(pd.DataFrame(rows))
+    df = df.loc[regular_session_mask(df["timestamp"])].reset_index(drop=True)
+    if df.empty:
+        return None
     df["inst_net"] = df["xl_net"] + df["l_net"]
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
     df["date"]     = df["datetime"].dt.normalize()

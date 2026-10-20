@@ -57,6 +57,7 @@ import pandas as pd
 os.environ.setdefault("US_STOCK_API_BASE_URL", "http://74.208.124.247:8000")
 
 import signal_generator_v4 as v4
+from inventory_diagnostics import DIAGNOSTIC_COLUMNS, add_inventory_diagnostics
 
 
 OUTPUT_DIR = v4.OUTPUT_DIR
@@ -161,7 +162,7 @@ def merge_flow(df: pd.DataFrame, flow_df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["date"] = df["datetime"].dt.normalize()
 
-    df = df.merge(flow_sub, on="date", how="left")
+    df = df.merge(flow_sub, on="date", how="left", validate="many_to_one")
     df["flow_present"] = df["inst_net"].notna()
 
     # Keep raw nullable flow for quality/scoring. Filled columns remain for
@@ -1047,6 +1048,7 @@ def compute_signal(df: pd.DataFrame, ticker: str = None) -> pd.DataFrame:
     ).clip(0, 25).round(2)
     df["delta_inventory"] = direction * df["est_inst_participation"] / 100 * df["volume"]
     df["cumulative_inventory"] = df["delta_inventory"].cumsum()
+    df = add_inventory_diagnostics(df)
 
     print("[v5.3] Split long/short scoring; formal shorts require relative-weakness confirmation")
     print(
@@ -1146,6 +1148,7 @@ def save_output(df: pd.DataFrame, ticker: str, interval: str) -> str:
         "institutional_holding_signal", "institutional_holding_read_cn", "pm_action_cn",
         "why_signal_cn", "risk_cn", "next_check_cn",
     ]
+    cols += DIAGNOSTIC_COLUMNS
     out = df[[c for c in cols if c in df.columns]].copy().dropna(subset=["signal"])
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     fname = f"{ticker}_{interval}_{ts}_v5_3_signals.csv"

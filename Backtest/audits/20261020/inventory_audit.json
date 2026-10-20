@@ -1,0 +1,142 @@
+{
+  "files": [
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/AAPL_1d_20260602_131849_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02",
+      "end": "2026-06-01",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": 217411135.15116632,
+      "minimum_cumulative_model_position_change_shares": -86884337.0973,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 5.311180648429803,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    },
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/NVDA_1d_20260602_151740_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02 05:00:00",
+      "end": "2026-06-01 04:00:00",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": 674683327.730446,
+      "minimum_cumulative_model_position_change_shares": -140632144.11949998,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 2.99402974342587,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    },
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/MSFT_1d_20260602_133016_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02 05:00:00",
+      "end": "2026-06-01 04:00:00",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": -65854447.20111194,
+      "minimum_cumulative_model_position_change_shares": -156963989.3565037,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 2.606154540366761,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    },
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/MSFT_1d_20260602_151813_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02 05:00:00",
+      "end": "2026-06-01 04:00:00",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": 103764061.48168696,
+      "minimum_cumulative_model_position_change_shares": -2746067.1844999976,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 2.373039326519123,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    },
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/GOOGL_1d_20260602_151837_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02 05:00:00",
+      "end": "2026-06-01 04:00:00",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": 156636427.7661849,
+      "minimum_cumulative_model_position_change_shares": -16267039.118000006,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 1.0896496063503933,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    },
+    {
+      "schema_version": "inventory-diagnostics-v1",
+      "source_file": "Backtest/backtest scripts & outputs/outputs/TSLA_1d_20260602_151630_signals.csv",
+      "rows": 353,
+      "start": "2025-01-02 05:00:00",
+      "end": "2026-06-01 04:00:00",
+      "model_change_coverage": 0.8923512747875354,
+      "cumulative_model_position_change_shares": 142298627.54478294,
+      "minimum_cumulative_model_position_change_shares": -27777802.193400025,
+      "legacy_cumulative_mismatch_rows": 0,
+      "legacy_cumulative_compared_rows": 315,
+      "model_flow_pressure_pct": 2.098235216645196,
+      "model_flow_pressure_window": 20,
+      "inventory_data_status": "ok",
+      "institutional_holdings_shares": null,
+      "holdings_status": "unidentifiable_without_calibration_and_anchor",
+      "warnings": [
+        "Signed model changes are not observed institutional positions or fund flows.",
+        "No forced positivity, zero-filled gaps, or inferred opening balance.",
+        "Bar validation cannot detect omitted sessions or unreported stock splits.",
+        "Historical signals may use full-sample HMM/quality fits; this audit is not a causal backtest."
+      ]
+    }
+  ]
+}

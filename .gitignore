@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+Backtest/backtest scripts & outputs/raw_data_cache/
+Backtest/backtest scripts & outputs/output/
+local-artifacts/
+.env
+.env.*

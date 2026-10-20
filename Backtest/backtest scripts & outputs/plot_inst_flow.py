@@ -9,25 +9,36 @@ import sys
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from inventory_diagnostics import add_inventory_diagnostics
+
+
+def chart_data(df: pd.DataFrame) -> pd.DataFrame:
+    if {"delta_inventory", "volume", "datetime"} <= set(df.columns):
+        return add_inventory_diagnostics(df)
+    return df
 
 
 def build_chart(df: pd.DataFrame, ticker: str, interval: str,
                  benchmark_df: pd.DataFrame = None, benchmark_name: str = None) -> go.Figure:
+    df = chart_data(df)
     has_raw = "raw_score" in df.columns and df["raw_score"].notna().any()
     has_final = "final_score" in df.columns and df["final_score"].notna().any()
-    has_inv = "cumulative_inventory" in df.columns and df["cumulative_inventory"].notna().any()
+    inv_column = ("cumulative_model_position_change_shares" if "cumulative_model_position_change_shares" in df
+                  else "cumulative_inventory")
+    has_inv = inv_column in df.columns and df[inv_column].notna().any()
     has_signal = "signal" in df.columns
 
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=4, cols=1,
         shared_xaxes=True,
-        row_heights=[0.5, 0.25, 0.25],
+        row_heights=[0.46, 0.20, 0.20, 0.14],
         vertical_spacing=0.04,
-        specs=[[{"secondary_y": True}], [{}], [{}]],
+        specs=[[{"secondary_y": True}], [{}], [{}], [{}]],
         subplot_titles=(
             f"{ticker} ({interval}) — Price" + (f"  vs  {benchmark_name}" if benchmark_df is not None else ""),
             "raw_score (dotted) vs final_score (solid)",
-            "Cumulative estimated institutional inventory (heuristic)",
+            "Cumulative model position change (shares; zero-based, not holdings)",
+            "20-bar model flow pressure (% of share volume; not observed fund flows)",
         ),
     )
 
@@ -111,18 +122,26 @@ def build_chart(df: pd.DataFrame, ticker: str, interval: str,
 
     if has_inv:
         fig.add_trace(go.Scatter(
-            x=df["datetime"], y=df["cumulative_inventory"],
-            name="cumulative_inventory",
+            x=df["datetime"], y=df[inv_column],
+            name="Model position change",
             line=dict(color="#9467bd", width=1.5),
             fill="tozeroy", fillcolor="rgba(148,103,189,0.15)",
-            hovertemplate="cum. inventory: %{y:,.0f} sh (est.)<extra></extra>",
+            hovertemplate="Cumulative model change: %{y:+,.0f} shares (not holdings)<extra></extra>",
         ), row=3, col=1)
+
+    if "model_flow_pressure_pct" in df:
+        fig.add_trace(go.Scatter(
+            x=df["datetime"], y=df["model_flow_pressure_pct"],
+            name="20-bar model flow pressure", line=dict(color="#00897b", width=1.5),
+            connectgaps=False,
+            hovertemplate="Model flow pressure: %{y:+.2f}%<extra></extra>",
+        ), row=4, col=1)
 
     fig.update_layout(
         title=f"{ticker} {interval} — Model-Predicted Institutional Flow vs Price",
         hoversubplots="axis",
         hovermode="x",
-        height=900,
+        height=1050,
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis_rangeslider_visible=False,
@@ -133,6 +152,7 @@ def build_chart(df: pd.DataFrame, ticker: str, interval: str,
         fig.add_hline(y=v, line_dash="dot",
                       line_color="rgba(150,150,150,0.4)", line_width=0.6, row=2, col=1)
     fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=0.8, row=3, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=0.8, row=4, col=1)
 
     fig.update_xaxes(
         showspikes=True, spikemode="across", spikesnap="cursor",
@@ -140,8 +160,9 @@ def build_chart(df: pd.DataFrame, ticker: str, interval: str,
     )
     fig.update_yaxes(title_text="Price ($)", row=1, col=1)
     fig.update_yaxes(title_text="Score [-1,1]", row=2, col=1)
-    fig.update_yaxes(title_text="Est. shares", row=3, col=1)
-    fig.update_xaxes(title_text="Date", row=3, col=1)
+    fig.update_yaxes(title_text="Share change", row=3, col=1)
+    fig.update_yaxes(title_text="Pressure %", row=4, col=1)
+    fig.update_xaxes(title_text="Date", row=4, col=1)
 
     return fig
 
@@ -161,6 +182,7 @@ def main():
 
     df = pd.read_csv(args.file, parse_dates=["datetime"])
     df = df.sort_values("datetime").reset_index(drop=True)
+    df = chart_data(df)
     print(f"[OK] Loaded {len(df)} rows from {args.file}")
 
     required = {"datetime", "open", "high", "low", "close"}
@@ -196,10 +218,12 @@ def main():
     fig = build_chart(df, ticker, interval, benchmark_df=benchmark_df, benchmark_name=benchmark_name)
 
     ts_ms     = [int(t.timestamp() * 1000) for t in df["datetime"]]
-    inv_col   = df.get("cumulative_inventory", pd.Series([None]*len(df)))
+    inv_col   = df.get("cumulative_model_position_change_shares", df.get("cumulative_inventory", pd.Series([None]*len(df))))
+    pressure_col = df.get("model_flow_pressure_pct", pd.Series([None]*len(df)))
     score_col = df.get("final_score", pd.Series([None]*len(df)))
     raw_col   = df.get("raw_score", pd.Series([None]*len(df)))
     inv_vals   = [None if pd.isna(v) else round(float(v))    for v in inv_col]
+    pressure_vals = [None if pd.isna(v) else round(float(v), 4) for v in pressure_col]
     score_vals = [None if pd.isna(v) else round(float(v), 4) for v in score_col]
     raw_vals   = [None if pd.isna(v) else round(float(v), 4) for v in raw_col]
     high_vals  = [None if pd.isna(v) else round(float(v), 4) for v in df["high"]]
@@ -210,6 +234,7 @@ def main():
     data_js = (
         f"var TS={json.dumps(ts_ms)};\n"
         f"var INV={json.dumps(inv_vals)};\n"
+        f"var PRESSURE={json.dumps(pressure_vals)};\n"
         f"var SCORE={json.dumps(score_vals)};\n"
         f"var RAW={json.dumps(raw_vals)};\n"
         f"var HIGH={json.dumps(high_vals)};\n"
@@ -257,7 +282,8 @@ gd.on('plotly_hover', function(evt) {
     if (OPEN[i]  !== null) lines.push('O: '+OPEN[i].toFixed(2)+'  H: '+HIGH[i].toFixed(2)+'  L: '+LOW[i].toFixed(2)+'  C: '+CLOSE[i].toFixed(2));
     if (RAW[i]   !== null) lines.push('raw_score:   '+(RAW[i]>=0?'+':'')+RAW[i].toFixed(3));
     if (SCORE[i] !== null) lines.push('final_score: '+(SCORE[i]>=0?'+':'')+SCORE[i].toFixed(3));
-    if (INV[i]   !== null) lines.push('cum. inv:    '+INV[i].toLocaleString()+' sh');
+    if (INV[i]   !== null) lines.push('model change: '+INV[i].toLocaleString()+' shares (not holdings)');
+    if (PRESSURE[i] !== null) lines.push('20-bar pressure: '+PRESSURE[i].toFixed(2)+'%');
 
     tooltip.innerHTML = lines.join('<br>');
     tooltip.style.display = 'block';
@@ -281,7 +307,8 @@ gd.on('plotly_unhover', function() {
 // ── Y-axis auto-fit on zoom ──────────────────────────────────────
 // NOTE: row 1 has secondary_y=True (for the benchmark overlay), which
 // shifts Plotly's y-axis numbering: yaxis=row1 primary, yaxis2=row1
-// secondary (benchmark), yaxis3=row2 (score), yaxis4=row3 (inventory).
+// secondary (benchmark), yaxis3=row2 (score), yaxis4=row3 (change),
+// yaxis5=row4 (pressure).
 // This is NOT the same numbering as before the benchmark feature was
 // added (used to be yaxis/yaxis2/yaxis3 for rows 1/2/3) — if removing
 // the benchmark overlay in the future, this numbering needs to shift back.
@@ -323,7 +350,7 @@ gd.on('plotly_relayout', function(eventData) {
     var changed = false;
     var r0 = null, r1 = null, isReset = false;
 
-    var axKeys = ['xaxis', 'xaxis2', 'xaxis3'];  // x-axes unaffected by secondary_y
+    var axKeys = ['xaxis', 'xaxis2', 'xaxis3', 'xaxis4'];
     for (var k = 0; k < axKeys.length; k++) {
         var ax = axKeys[k];
         if (eventData[ax + '.range[0]'] !== undefined) {
@@ -338,7 +365,8 @@ gd.on('plotly_relayout', function(eventData) {
             'yaxis.autorange':  true,
             'yaxis2.autorange': true,
             'yaxis3.autorange': true,
-            'yaxis4.autorange': true
+            'yaxis4.autorange': true,
+            'yaxis5.autorange': true
         };
         changed = true;
     } else if (r0 !== null && r1 !== null) {
@@ -353,6 +381,8 @@ gd.on('plotly_relayout', function(eventData) {
 
         var ir = visibleYRange(INV, t0ms, t1ms, 0.15);
         if (ir) { update['yaxis4.range'] = [ir[0], ir[1]]; changed = true; }
+        var fr = visibleYRange(PRESSURE, t0ms, t1ms, 0.15);
+        if (fr) { update['yaxis5.range'] = [fr[0], fr[1]]; changed = true; }
     }
 
     if (changed) {
