@@ -179,3 +179,44 @@ After authorized access is configured locally, a fresh run can use:
 
 The date range ends on a completed session; reruns should use explicitly dated
 windows. This command is not proof that two years of raw flow actually exists.
+
+### Normal Account Login
+
+The v5.3 CLI also accepts an existing private account file instead of asking
+the user to extract a browser cookie. The JSON may be a single object with
+`username` and `password`, or a list of accounts with `--api-username` selecting
+exactly one. The file must be private (`0600`). It is never modified, no password
+is passed on the command line, and the returned session is held only in process
+memory. Failed logins are not retried across accounts.
+
+```bash
+.venv/bin/python 'Backtest/backtest scripts & outputs/signal_generator_v5_3.py' \
+  --api-base-url http://127.0.0.1:18080 \
+  --credentials-file /path/to/existing/private-accounts.json \
+  --api-username YOUR_EXISTING_USERNAME \
+  --ticker MSFT --interval 1d \
+  --from-date 2024-10-20 --to-date 2026-10-19 \
+  --no-cache --refresh-data
+```
+
+Before using the loopback example, the server owner can establish an encrypted
+SSH tunnel in a separate terminal, entering the SSH password only there:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18080:127.0.0.1:8000 root@74.208.124.247
+```
+
+Keep that terminal open during collection. No remote service restart, account
+creation, firewall change, JWT signing or authentication bypass is needed.
+Use the server's ordinary authorized SSH account if root is unavailable. The
+existing default server address in this repository currently uses public HTTP;
+do not pass an account file to that address directly.
+
+On 2026-10-20 the previous local SSH control socket was absent, noninteractive
+SSH had no usable identity, and the server's HTTPS endpoint was unavailable.
+An existing project account file was found locally, but it has **not** been
+validated against the server: without the secure connection, no login attempt
+using those credentials or full two-year collection was performed. The user
+was asked to establish the tunnel. Do not describe local/mocked tests as a
+successful production connection.

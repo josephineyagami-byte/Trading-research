@@ -1,8 +1,12 @@
 import contextlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
+import json
 import os
 from pathlib import Path
 import sys
+import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -11,10 +15,106 @@ import requests
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "Backtest" / "backtest scripts & outputs"
 sys.path.insert(0, str(SCRIPTS))
-from research_api import ResearchAPIError, fetch_api
+from research_api import ResearchAPIError, fetch_api, login_from_private_file
 
 
 class ResearchAPITests(unittest.TestCase):
+    def private_account(self, directory, data):
+        path = Path(directory) / "account.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        path.chmod(0o600)
+        return path
+
+    def test_normal_login_selects_one_account_and_does_not_persist_session(self):
+        accounts = [{"username": "first", "password": "first-test-password"},
+                    {"username": "second", "password": "second-test-password"}]
+        response = Mock(status_code=200)
+        response.cookies = requests.cookies.cookiejar_from_dict({"auth": "test-session"})
+        response.json.return_value = {"username": "second"}
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.private_account(directory, accounts)
+            original = path.read_bytes()
+            with patch("research_api.requests.post", return_value=response) as post:
+                with contextlib.redirect_stdout(output):
+                    token = login_from_private_file("http://127.0.0.1:18080", path, "second")
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(list(Path(directory).iterdir()), [path])
+        self.assertEqual(token, "test-session")
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.kwargs["json"], accounts[1])
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+        self.assertNotIn("test-password", output.getvalue())
+        self.assertNotIn("test-session", output.getvalue())
+
+    def test_login_refuses_plaintext_before_reading_credentials(self):
+        with patch("research_api.requests.post") as post:
+            with self.assertRaisesRegex(ResearchAPIError, "public HTTP"):
+                login_from_private_file("http://example.invalid", "/does/not/exist")
+        post.assert_not_called()
+
+    def test_login_rejects_shared_files_and_ambiguous_accounts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.private_account(directory, [{"username": "a", "password": "test"},
+                                                     {"username": "b", "password": "test"}])
+            with patch("research_api.requests.post") as post:
+                with self.assertRaisesRegex(ResearchAPIError, "exactly one"):
+                    login_from_private_file("https://example.invalid", path)
+                path.chmod(0o644)
+                with self.assertRaisesRegex(ResearchAPIError, "chmod 600"):
+                    login_from_private_file("https://example.invalid", path, "a")
+            post.assert_not_called()
+
+    def test_failed_login_is_not_retried_and_does_not_expose_password(self):
+        for status in (401, 429, 302):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                path = self.private_account(directory, {"username": "test", "password": "test-secret"})
+                with patch("research_api.requests.post", return_value=Mock(status_code=status)) as post:
+                    with self.assertRaises(ResearchAPIError) as error:
+                        login_from_private_file("https://example.invalid", path)
+                self.assertEqual(post.call_count, 1)
+                self.assertNotIn("test-secret", str(error.exception))
+
+    def test_login_and_protected_read_over_real_loopback_http(self):
+        class FixtureAPI(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                account = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path != "/api/auth/login" or account != {"username": "fixture", "password": "fixture-password"}:
+                    self.send_error(401)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Set-Cookie", "auth=fixture-session; HttpOnly; Path=/")
+                self.end_headers()
+                self.wfile.write(b'{"username":"fixture"}')
+
+            def do_GET(self):
+                if self.headers.get("Cookie") != "auth=fixture-session":
+                    self.send_error(401)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"bars":[]}')
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            with tempfile.TemporaryDirectory() as directory:
+                path = self.private_account(directory, {"username": "fixture", "password": "fixture-password"})
+                token = login_from_private_file(base, path)
+            with patch.dict(os.environ, {"US_STOCK_AUTH_COOKIE": token}):
+                self.assertEqual(fetch_api(base, "/api/klines"), {"bars": []})
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_cookie_is_sent_only_as_cookie_and_redirects_are_disabled(self):
         response = Mock(status_code=200)
         response.json.return_value = {"bars": []}

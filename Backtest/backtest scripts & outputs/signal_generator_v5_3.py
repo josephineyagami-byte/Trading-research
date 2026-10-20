@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -58,6 +59,7 @@ os.environ.setdefault("US_STOCK_API_BASE_URL", "http://74.208.124.247:8000")
 
 import signal_generator_v4 as v4
 from inventory_diagnostics import DIAGNOSTIC_COLUMNS, add_inventory_diagnostics
+from research_api import login_from_private_file
 
 
 OUTPUT_DIR = v4.OUTPUT_DIR
@@ -1229,7 +1231,20 @@ def main():
     parser.add_argument("--refresh-data", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--no-context", action="store_true", help="Skip short-volume and darkpool context fetches")
+    parser.add_argument("--api-base-url", help="HTTPS API base URL or loopback tunnel URL")
+    parser.add_argument("--credentials-file", help="Private local account JSON; never pass a password on the command line")
+    parser.add_argument("--api-username", help="Select one account when the private JSON contains multiple accounts")
     args = parser.parse_args()
+
+    if args.api_base_url:
+        v4.BASE_URL = args.api_base_url.rstrip("/")
+    if args.api_username and not args.credentials_file:
+        parser.error("--api-username requires --credentials-file")
+    if args.credentials_file:
+        os.environ["US_STOCK_AUTH_COOKIE"] = login_from_private_file(
+            v4.BASE_URL, args.credentials_file, username=args.api_username,
+        )
+        print("[AUTH] Existing account login succeeded; session is held only in memory")
 
     ticker = args.ticker.upper()
     interval = args.interval
@@ -1263,4 +1278,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        if main() is None:
+            sys.exit(1)
+    except v4.ResearchAPIError as exc:
+        sys.exit(f"[ACCESS ERROR] {exc}")
