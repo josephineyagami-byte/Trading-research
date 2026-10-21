@@ -37,6 +37,7 @@ def build_snapshot(prices, raw_rows, ticker):
         "validation": validation, "folds": folds, "series": records(joined), "replay": records(replay),
         "limitations": ["sampled tick-rule direction, not identified institutions or verified aggressors",
                         "amounts are sampled USD notional; no full-market extrapolation or conversion to holdings",
+                        "main-flow API uses available stored trades, not the separate large-trades widget's 1/16 filter; raw trade corrections/deduplication are not independently verified by aggregate buckets",
                         "historical raw data revisions/availability and price adjustment basis are not point-in-time verified",
                         "replay excludes borrow fees, slippage beyond the stated one-way fee, and financing costs",
                         "missing or partial sessions invalidate rolling estimates; a cumulative series stops at an interior gap"],

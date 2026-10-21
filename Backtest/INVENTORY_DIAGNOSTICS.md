@@ -305,8 +305,22 @@ pressure5/20 = sum(sampledLargeNetUsd, 5/20 sessions)
 ```
 
 Buckets retain the source's fixed USD thresholds: super >= 500,000, large >=
-100,000, mid >= 20,000. The source is the teacher server's checksum-sampled
-tick-rule classification, not verified aggressors or identified institutions.
+100,000, mid >= 20,000. The source is the teacher server's `/api/main-flow`
+tick-rule classification of available stored trades, not verified aggressors
+or identified institutions. Unlike the separate large-trades widget, this
+endpoint does not apply a checksum-prefix 1/16 filter; do not infer that sample
+rate or multiply these values by 16. The aggregate response cannot independently
+establish raw trade-ID deduplication, correction eligibility or complete capture.
+The inspected legacy source queries stored `price * size`, does not explicitly
+deduplicate raw ticks or exclude correction flags, and stores `decimal_size`
+as an integer. It is therefore not an exact fractional-share notional series.
+These are remaining source-quality risks, not evidence that every repeated
+checksum is a duplicate or that zero integer size means an invalid execution.
+[Massive's fractional-share documentation](https://massive.com/knowledge-base/article/how-does-massive-handle-fractional-share-trades)
+explains why a valid fractional execution can have integer `size = 0` and needs
+its decimal-size field. Resolving the historical source precision requires a
+separately reconciled ingestion migration, not a silent interpretation change
+halfway through this repair. The current research page exposes this limitation.
 No full-tape extrapolation, holdings reconstruction, positivity clamp or
 conversion of dollars into shares is performed. A negative result is allowed.
 
@@ -399,3 +413,36 @@ returned HTTP 403 `NOT_AUTHORIZED`. Thus restored historical access does not
 establish real-time or quote entitlement. The selected upstream WebSocket feed
 is also configured `delayed`. No second upstream socket was started, avoiding
 interference with the existing collector's connection allowance.
+
+### Website Integration Source
+
+`integrations/us_stock/` contains the reviewed website addition and operations
+scripts, separate from the existing website repository's unrelated changes.
+The `web/` files use that application's existing authentication, i18n, remote
+data hooks and Lightweight Charts dependency. They are not a standalone site.
+`ops/install_flow_page.py` backs up files and applies the five new page/data
+files plus four narrow navigation/config edits. It refuses a different existing
+flow file unless its hash matches a previously recorded install manifest.
+
+`ops/activate_flow_page.py` checks a completed build and model snapshot, keeps
+hashed assets for already-open pages, restarts only the web service, and restores
+the previous service override if its readiness check fails. Production was
+returned to the normal `.next` build directory after alternate-build testing;
+the only persistent service setting for this feature is
+`FLOW_MODEL_SNAPSHOT_DIR`. The previous `.next` build and install/activation
+receipts are retained on the server for rollback. Future ordinary website
+builds therefore do not silently keep serving an old alternate release.
+
+The gap-repair helper targets only explicit past dates from one snapshot. It
+uses at most three workers, stages a complete vendor day privately, and inserts
+only absent checksums. It never deletes existing tape records. Incomplete
+downloads cannot be applied. `inspect_flow_stages.py` independently checks the
+completed stage date bounds; `probe_flow_sources.py` reports entitlement status
+without printing keys. Run the four staging safety tests with:
+
+```bash
+.venv/bin/python -m unittest discover -s integrations/us_stock/tests -v
+```
+
+Do not publish raw trade staging files, website account files, `.env` values,
+session cookies or model snapshot datasets to this public source repository.

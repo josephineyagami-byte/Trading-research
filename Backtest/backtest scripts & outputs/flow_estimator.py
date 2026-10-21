@@ -51,6 +51,8 @@ def estimate_daily_flow(prices, raw_rows, ticker):
         raise ValueError("Prices must be nonempty, unique and chronological")
     if "ticker" in prices and not prices["ticker"].eq(ticker).all():
         raise ValueError("Mixed price tickers")
+    if p.map(lambda value: isinstance(value, (bool, np.bool_))).any().any():
+        raise ValueError("Boolean price values are not market observations")
     values = p.apply(pd.to_numeric, errors="raise")
     if (not np.isfinite(values).all().all() or (values[["open", "high", "low", "close"]] <= 0).any().any()
             or (values.volume < 0).any() or (values.high < values[["open", "close", "low"]].max(axis=1)).any()
@@ -64,6 +66,8 @@ def estimate_daily_flow(prices, raw_rows, ticker):
     columns = ["time", *AMOUNTS, "total_notional", "neutral_notional", "sample_count"]
     raw = pd.DataFrame(raw_rows, columns=columns)
     if len(raw):
+        if raw.map(lambda value: isinstance(value, (bool, np.bool_))).any().any():
+            raise ValueError("Boolean flow values are not amounts or counts")
         raw = raw.apply(pd.to_numeric, errors="raise")
         if not np.isfinite(raw).all().all() or (raw < 0).any().any():
             raise ValueError("Invalid flow amounts")
@@ -87,6 +91,8 @@ def estimate_daily_flow(prices, raw_rows, ticker):
             sampledLargeNetUsd=("large_net_usd", "sum"), sampledNotionalUsd=("total_notional", "sum"),
             sampleCount=("sample_count", "sum"), sourceBars=("time", "count"),
         )
+        if not np.isfinite(daily).all().all() or (daily.sampledNotionalUsd <= 0).any() or (daily.sampleCount <= 0).any():
+            raise ValueError("Daily aggregation overflow or invalid totals")
     else:
         daily = pd.DataFrame(columns=["sampledLargeNetUsd", "sampledNotionalUsd", "sampleCount", "sourceBars"])
     out = p.join(daily)

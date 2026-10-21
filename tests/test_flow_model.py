@@ -88,11 +88,14 @@ class FlowEstimatorTests(unittest.TestCase):
 
     def test_invalid_amounts_and_missing_price_sessions_fail(self):
         prices, raw = fixture()
-        for bad in [{**raw[0], "super_buy": -1}, {**raw[0], "total_notional": 1}, {**raw[0], "sample_count": 0}]:
+        for bad in [{**raw[0], "super_buy": -1}, {**raw[0], "total_notional": 1}, {**raw[0], "sample_count": 0},
+                    {**raw[0], "sample_count": True}]:
             with self.assertRaises(ValueError):
                 estimate_daily_flow(prices, [bad]+raw[1:], "MSFT")
         with self.assertRaises(ValueError):
             estimate_daily_flow(prices.drop(index=2), raw, "MSFT")
+        with self.assertRaises(ValueError):
+            estimate_daily_flow(prices.assign(volume=True), raw, "MSFT")
 
     def test_empty_source_retains_unknown(self):
         prices, _ = fixture()

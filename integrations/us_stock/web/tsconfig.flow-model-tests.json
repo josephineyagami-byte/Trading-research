@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.research-worker.json",
+  "compilerOptions": {"outDir": ".performance-tests/flow-model"},
+  "include": ["tests/flow-model.test.ts"]
+}
