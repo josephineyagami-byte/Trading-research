@@ -1,7 +1,8 @@
-# Inventory Diagnostics: First Handoff Fix
+# Inventory Diagnostics and Independent Flow Research
 
-Updated: 2026-10-20. Based on upstream commit `722865d` and its bundled historical
-outputs, not a fresh two-year data pull or a production deployment.
+Updated: 2026-10-20. The first audit below uses upstream commit `722865d` and its
+bundled outputs. Later sections separately document the fresh data pull,
+independent estimator, chronological replay and website integration.
 
 ## What Was Wrong
 
@@ -285,3 +286,116 @@ flow and the model's cumulative share-change proxy are different quantities.
 The actual downloaded pages, CSVs and detailed source-quality audit are retained
 locally in ignored output/checkpoint folders, not redistributed in this public
 fork. No production website release was performed for this research change.
+
+## Independent Sampled-Flow Estimator
+
+The new `flow_estimator.py` / `run_flow_model.py` path does **not** call v5.3,
+read `trade_signal`, reuse its HMM, or turn recommendations into share changes.
+The original v5.3 path remains available for historical compatibility; it has
+not become a calibrated inventory estimator.
+
+The new quantity is signed **sampled USD notional**, method
+`sampled-tick-rule-v1`. For each regular session:
+
+```text
+sampledLargeNetUsd = sum(super_buy + large_buy - super_sell - large_sell)
+dailyPressure = sampledLargeNetUsd / sampledNotionalUsd
+pressure5/20 = sum(sampledLargeNetUsd, 5/20 sessions)
+               / sum(sampledNotionalUsd, 5/20 sessions)
+```
+
+Buckets retain the source's fixed USD thresholds: super >= 500,000, large >=
+100,000, mid >= 20,000. The source is the teacher server's checksum-sampled
+tick-rule classification, not verified aggressors or identified institutions.
+No full-tape extrapolation, holdings reconstruction, positivity clamp or
+conversion of dollars into shares is performed. A negative result is allowed.
+
+The XNYS calendar validates every price session and applies DST, holidays and
+early closes. A covered session has every expected five-minute sample bucket
+(78 on a full day, 42 on a 13:00 ET close). This means five-minute **sample
+coverage**, not proof of complete trade capture. Duplicate identical buckets
+are counted once; conflicting revisions, invalid units, amounts, grain and
+non-reconciling bucket totals fail. Missing and partial sessions invalidate
+rolling pressure, and continuous cumulative notional stops at an interior gap.
+
+The pre-repair fresh baseline has 471 fully five-minute-covered sessions, 28
+missing sessions and one partial session (2026-10-13). The earlier legacy
+472-date count measures any filtered flow presence, not full-session coverage.
+Historical backfill must be re-queried and these counts recomputed before
+claiming the gaps are repaired. Do not use insertion counts alone as coverage.
+
+### Chronological Replay, Not Proven Predictive Alpha
+
+`flow_walk_forward.py` uses scikit-learn `TimeSeriesSplit`, up to ten folds,
+252-bar rolling training, 21-bar tests and a five-bar gap. Training-only 20th
+and 80th percentiles of five-session pressure define one fixed illustrative
+rule. At least 120 valid training estimates are required. Values above the
+positive upper threshold are long, below the negative lower threshold short,
+and otherwise cash. This rule has not been optimized on the held-out results.
+
+A close-of-day decision enters at the next session open and earns the return
+to the following open. One-way cost is 10 bps, including turnover, flips and
+terminal liquidation; the same-date buy-and-hold comparator pays entry/exit
+costs. Missing predictions explicitly hold cash and remain in the coverage
+denominator. Fold boundaries and per-date decisions are exported for inspection.
+Tests mutate future prices/estimates and verify that past estimates and decisions
+do not change. This does not make historical data point-in-time valid.
+
+The required status is `research_replay_not_point_in_time_verified`: historical
+vendor revisions/availability and adjusted-price basis are not independently
+verified. Borrow fees, financing and extra slippage are excluded. Do not treat
+this as a production strategy, evidence of institutional ownership or a reason
+to trade. A prospective frozen-data evaluation is still required.
+
+### Rebuild Without Repeating Heavy Requests
+
+The following paths are examples for local, ignored research artifacts:
+
+```bash
+.venv/bin/python 'Backtest/backtest scripts & outputs/run_flow_model.py' \
+  --ticker MSFT --prices /path/to/dated-prices.csv \
+  --flow-checkpoint-dir /path/to/private/flow-pages \
+  --output local-artifacts/flow-model/MSFT.json
+```
+
+After an authorized historical repair, use `refresh_flow_checkpoints.py` with
+`--original`, a separate versioned `--output`, `--repair-snapshot`,
+`--api-base-url`, `--credentials-file` and `--api-username`. Only requests that
+overlap the repair dates are refreshed. Unaffected pages retain their original
+fetch time; the old directory is never changed. A private manifest records
+retained/refreshed pages and SHA256 hashes. Repeat the snapshot command with
+the new directory. The JSON includes both price and flow fingerprints.
+
+### Website and WebSocket Acceptance
+
+The website's authenticated `/flow-model` page reads precomputed JSON snapshots
+from `FLOW_MODEL_SNAPSHOT_DIR`, never a public directory. Opening the page does
+not rerun the estimator or request millions of trades. The three chart panes
+show price, sampled large-trade imbalance and 5/20-session pressure. Missing
+windows are not connected or filled with zero. Available tickers come from the
+published backend snapshot files, not an assumed universe of supported models.
+The page is bilingual and explicitly marked experimental/not live. Anonymous
+access is rejected before reading snapshots; path traversal and symlinks fail.
+
+`verify_market_stream.py` checks normal authenticated protocol-2 subscriptions,
+subscribe acknowledgement, ping/pong, contiguous sequence and actual payloads.
+`--require-realtime` also requires advertised delay zero, valid data and a source
+timestamp within 30 seconds (at most five seconds of future clock skew). A
+working socket or heartbeat alone cannot pass. A stale replay labeled zero
+delay cannot pass either. Login uses only the secure API/tunnel and the existing
+private account file, with session secrets held in memory.
+
+Actual MSFT trades and K-line probes on 2026-10-20 passed connection, subscribe
+and ping/pong, but advertised **900 seconds of delay** and delivered no market
+frames in the bounded 15-second window per channel. Real-time and overnight
+acceptance therefore remain **unpassed**. The existing upstream collector was
+not duplicated, and no vendor package, account credential or security policy
+was changed. The page's HTTP tests passed after deployment; browser visual
+acceptance remains subject to the user's saved website browsing permission.
+
+A separate read-only vendor check returned historical trades HTTP 200 and
+latest trade HTTP 200 with vendor status `DELAYED`; the latest NBBO endpoint
+returned HTTP 403 `NOT_AUTHORIZED`. Thus restored historical access does not
+establish real-time or quote entitlement. The selected upstream WebSocket feed
+is also configured `delayed`. No second upstream socket was started, avoiding
+interference with the existing collector's connection allowance.
