@@ -89,12 +89,12 @@ def render(data):
         status_zh = {"available":"样本可用", "partial":"样本不完整", "unavailable":"数据不足"}[case["status"]]
         audit_status = audit.get('status','unavailable')
         legacy_status = legacy.get('status','unavailable')
-        status_map = {"pass":"通过", "mismatch":"不一致", "unavailable":"暂无结果"}
+        status_map = {"pass":"通过", "partial":"部分可核验", "mismatch":"不一致", "unavailable":"暂无结果"}
         section = f'''<section><div class="section-heading"><h2>{case['ticker']}</h2>{label(case['status'],status_zh)}</div>
 <p class="question">{label(case['question'],question_zh)}</p>
 <dl><div><dt data-en="Complete 5m sample sessions" data-zh="五分钟样本完整交易日">Complete 5m sample sessions</dt><dd>{complete}/{n}</dd></div>
 <div><dt data-en="5m → 1h → 1d amount identity" data-zh="五分钟至小时至日线金额对账">5m → 1h → 1d amount identity</dt><dd>{label(audit_status,status_map[audit_status])}</dd></div>
-<div><dt data-en="Legacy formula arithmetic" data-zh="旧版公式算术检查">Legacy formula arithmetic</dt><dd>{label(legacy_status,status_map[legacy_status])}</dd></div></dl>
+<div><dt data-en="Legacy arithmetic: full input" data-zh="旧版算术核验：完整输入">Legacy arithmetic: full input</dt><dd>{label(legacy_status,status_map[legacy_status])} {legacy.get('checkedRows',0)}/{legacy.get('totalRows',0)}</dd></div></dl>
 {figure(case) if case.get('series') else '<p class="warning">No validated flow snapshot is available. Missing observations are not zero.</p>'}
 {events}<p class="muted" data-en="Different units: the legacy panel is modeled share pressure; the new panels use sampled USD notional. Their levels are not interchangeable. No trading-performance result is claimed." data-zh="单位不同：旧版是模拟股份压力，新版按样本美元成交额计算，数值不可直接互换。本页不宣称交易绩效。">Different units: the legacy panel is modeled share pressure; the new panels use sampled USD notional. Their levels are not interchangeable. No trading-performance result is claimed.</p>
 <p class="muted" data-en="Legacy HMM fitting and reliability use the full sample. Benchmark, short-volume and dark-pool context are absent in this offline replay. This is not an exact reproduction of the case-study screenshots." data-zh="本次旧版诊断采用全样本 HMM 与可靠度计算；未接入基准、做空成交量及暗池背景，不是案例截图的精确复现。">Legacy HMM fitting and reliability use the full sample. Benchmark, short-volume and dark-pool context are absent in this offline replay. This is not an exact reproduction of the case-study screenshots.</p>
@@ -103,6 +103,7 @@ def render(data):
 <p>Price SHA256: <code>{escape(case.get('priceSha256','unavailable'))}</code></p><p>Flow fingerprint: <code>{escape(case.get('flowFingerprint','unavailable'))}</code></p>
 <p>Price source: {escape(case.get('priceSource','unavailable'))}; adjusted: {escape(str(case.get('priceAdjusted')))}</p>
 <p>Legacy context: {escape(legacy.get('context',legacy.get('reason','unavailable')))}</p>
+<p>{label('Leading warm-up rows','开头预热行数')}: {legacy.get('leadingWarmupRows',0)}; {label('Other incomplete audit rows','其他未完整核验行数')}: {legacy.get('unexpectedIncompleteRows',0)}</p>
 <p>Aggregation source: {escape(audit.get('basis','unavailable'))}</p><p>Independent tape verification: false</p></details></section>'''
         sections.append(section)
     title = "INTC / TSLA Flow Cases"

@@ -39,8 +39,35 @@ def session_schedule(start, end):
     return calendar.schedule.loc[start:end, ["open", "close"]].copy()
 
 
+def normalize_flow_samples(raw_rows):
+    """Validate and deduplicate numeric 5m samples before any aggregation."""
+    columns = ["time", *AMOUNTS, "total_notional", "neutral_notional", "sample_count"]
+    raw = pd.DataFrame(raw_rows, columns=columns)
+    if raw.empty:
+        return raw
+    if raw.map(lambda value: isinstance(value, (bool, np.bool_))).any().any():
+        raise ValueError("Boolean flow values are not amounts or counts")
+    raw = raw.apply(pd.to_numeric, errors="raise")
+    if not np.isfinite(raw).all().all() or (raw < 0).any().any():
+        raise ValueError("Invalid flow amounts")
+    if ((raw.time % 300_000 != 0).any() or (raw.sample_count <= 0).any()
+            or (raw.sample_count % 1 != 0).any() or (raw.total_notional <= 0).any()):
+        raise ValueError("Invalid five-minute flow grain or sample count")
+    if not np.allclose(raw[AMOUNTS + ["neutral_notional"]].sum(axis=1), raw.total_notional, rtol=1e-7, atol=.01):
+        raise ValueError("Flow buckets do not reconcile to total sampled notional")
+    raw = raw.drop_duplicates()
+    if raw.time.duplicated().any():
+        raise ValueError("Conflicting repeated flow bars")
+    return raw
+
+
 def estimate_daily_flow(prices, raw_rows, ticker):
-    """Aggregate supplied five-minute samples; never infer missing trades or full-market flow."""
+    """Aggregate samples without inferring missing trades or full-market flow."""
+    return estimate_daily_flow_with_samples(prices, raw_rows, ticker)[0]
+
+
+def estimate_daily_flow_with_samples(prices, raw_rows, ticker):
+    """Return daily estimates and the same normalized regular-session samples."""
     required = ["datetime", "open", "high", "low", "close", "volume"]
     if not set(required) <= set(prices):
         raise ValueError("Price OHLCV and datetime are required")
@@ -63,22 +90,8 @@ def estimate_daily_flow(prices, raw_rows, ticker):
         raise ValueError("Price dates must match the exchange calendar; repair missing sessions first")
     p = values
     expected = ((schedule.close - schedule.open).dt.total_seconds() / 300).astype(int)
-    columns = ["time", *AMOUNTS, "total_notional", "neutral_notional", "sample_count"]
-    raw = pd.DataFrame(raw_rows, columns=columns)
+    raw = normalize_flow_samples(raw_rows)
     if len(raw):
-        if raw.map(lambda value: isinstance(value, (bool, np.bool_))).any().any():
-            raise ValueError("Boolean flow values are not amounts or counts")
-        raw = raw.apply(pd.to_numeric, errors="raise")
-        if not np.isfinite(raw).all().all() or (raw < 0).any().any():
-            raise ValueError("Invalid flow amounts")
-        if ((raw.time % 300_000 != 0).any() or (raw.sample_count <= 0).any()
-                or (raw.sample_count % 1 != 0).any() or (raw.total_notional <= 0).any()):
-            raise ValueError("Invalid five-minute flow grain or sample count")
-        if not np.allclose(raw[AMOUNTS + ["neutral_notional"]].sum(axis=1), raw.total_notional, rtol=1e-7, atol=.01):
-            raise ValueError("Flow buckets do not reconcile to total sampled notional")
-        raw = raw.drop_duplicates()
-        if raw.time.duplicated().any():
-            raise ValueError("Conflicting repeated flow bars")
         opens = schedule.open.astype("int64").to_numpy() // 1_000_000
         closes = schedule.close.astype("int64").to_numpy() // 1_000_000
         location = np.searchsorted(opens, raw.time.to_numpy(), side="right") - 1
@@ -107,4 +120,4 @@ def estimate_daily_flow(prices, raw_rows, ticker):
     # An interior gap invalidates a continuous cumulative total; no offset or positivity clamp.
     out["contiguousSampledNetUsd"] = valid_net.cumsum(skipna=False)
     out["ticker"] = ticker
-    return out.reset_index()
+    return out.reset_index(), raw

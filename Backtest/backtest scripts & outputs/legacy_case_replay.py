@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from market_data_quality import regular_session_mask
+from flow_estimator import normalize_flow_samples
 import signal_generator_v4 as v4
 import signal_generator_v5_3 as v53
 
@@ -20,7 +21,7 @@ def replay_repository(prices, raw_rows, ticker):
     if "timestamp" not in bars:
         bars["timestamp"] = bars.datetime.astype("int64")//1_000_000
     bars = v4.compute_features(bars)
-    raw = pd.DataFrame(raw_rows).drop_duplicates()
+    raw = normalize_flow_samples(raw_rows)
     if len(raw):
         raw = raw.loc[regular_session_mask(raw.time)].copy()
         raw["xl_net"] = raw.super_buy-raw.super_sell

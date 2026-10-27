@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from flow_estimator import AMOUNTS, estimate_daily_flow, session_schedule
+from flow_estimator import AMOUNTS, estimate_daily_flow_with_samples, session_schedule
 
 
 FORMULAS = {
@@ -20,7 +20,8 @@ def legacy_formula_audit(frame):
     """Check the saved repository formula without refitting or repairing the output."""
     required = {"datetime", "trade_signal", "est_inst_participation", "volume", "delta_inventory", "cumulative_inventory"}
     if not required <= set(frame):
-        return {"status": "unavailable", "reason": "Saved legacy formula inputs are absent."}
+        return {"status": "unavailable", "reason": "Saved legacy formula inputs are absent.",
+                "checkedRows": 0, "totalRows": len(frame)}
     dates = pd.to_datetime(frame.datetime, utc=True, errors="raise")
     if frame.empty or dates.duplicated().any() or not dates.is_monotonic_increasing:
         raise ValueError("Legacy observations must have unique chronological timestamps")
@@ -37,16 +38,29 @@ def legacy_formula_audit(frame):
     if not frame.trade_signal.dropna().isin(["long", "short", "neutral", "watch_long", "watch_short", "absorption_watch"]).all():
         raise ValueError("Unknown legacy trade signal")
     direction = pd.Series(np.select([frame.trade_signal.eq("long"), frame.trade_signal.eq("short")], [1, -1], 0), index=frame.index)
-    predicted = direction * values.est_inst_participation / 100 * values.volume
-    eligible = values.notna().all(axis=1) & frame.trade_signal.notna()
-    delta_mismatch = eligible & ~np.isclose(predicted, values.delta_inventory, rtol=1e-7, atol=.01, equal_nan=False)
-    cumulative = values.delta_inventory.cumsum()
-    cumulative_mismatch = eligible & ~np.isclose(cumulative, values.cumulative_inventory, rtol=1e-7, atol=.01, equal_nan=False)
+    inputs_known = values[["est_inst_participation", "volume"]].notna().all(axis=1) & frame.trade_signal.notna()
+    predicted = (direction * values.est_inst_participation / 100 * values.volume).where(inputs_known)
+    delta_checked = inputs_known & values.delta_inventory.notna()
+    delta_mismatch = delta_checked & ~np.isclose(predicted, values.delta_inventory, rtol=1e-7, atol=.01, equal_nan=False)
+    # Leading warm-up can precede the repository's zero-based sum; an interior
+    # unknown delta prevents verification of every subsequent cumulative value.
+    delta_known = values.delta_inventory.notna()
+    after_gap = (delta_known.cummax() & ~delta_known).cummax()
+    cumulative = values.delta_inventory.cumsum().where(delta_known & ~after_gap)
+    cumulative_checked = cumulative.notna() & values.cumulative_inventory.notna()
+    cumulative_mismatch = cumulative_checked & ~np.isclose(cumulative, values.cumulative_inventory, rtol=1e-7, atol=.01, equal_nan=False)
+    fully_checked = delta_checked & cumulative_checked
+    warmup = (~inputs_known).cumprod().astype(bool) & values.delta_inventory.isna() & values.cumulative_inventory.isna()
+    any_checked = bool(delta_checked.any() or cumulative_checked.any())
+    status = ("mismatch" if delta_mismatch.any() or cumulative_mismatch.any() else
+              "unavailable" if not any_checked else "pass" if fully_checked.all() else "partial")
     return {
-        "status": "pass" if eligible.any() and not delta_mismatch.any() and not cumulative_mismatch.any() else "mismatch" if eligible.any() else "unavailable",
-        "checkedRows": int(eligible.sum()), "totalRows": len(frame),
+        "status": status, "checkedRows": int(fully_checked.sum()), "totalRows": len(frame),
+        "deltaCheckedRows": int(delta_checked.sum()), "cumulativeCheckedRows": int(cumulative_checked.sum()),
+        "incompleteRows": int((~fully_checked).sum()), "leadingWarmupRows": int(warmup.sum()),
+        "unexpectedIncompleteRows": int((~fully_checked & ~warmup).sum()),
         "deltaMismatchRows": int(delta_mismatch.sum()), "cumulativeMismatchRows": int(cumulative_mismatch.sum()),
-        "zeroDirectionRows": int((eligible & direction.eq(0)).sum()),
+        "zeroDirectionRows": int((delta_checked & direction.eq(0)).sum()),
         "firstDate": dates.iloc[0].strftime("%Y-%m-%d"), "lastDate": dates.iloc[-1].strftime("%Y-%m-%d"),
         "reproducesCaseStudy": False,
         "meaning": "Arithmetic check of saved repository output, not a reproduction of the deck's continuous-bias formula or proof of holdings.",
@@ -55,10 +69,9 @@ def legacy_formula_audit(frame):
 
 def timeframe_audit(prices, raw_rows, ticker):
     """Use one validated 5m source; compare direct daily sums with sums via 1h."""
-    daily = estimate_daily_flow(prices, raw_rows, ticker)
+    daily, raw = estimate_daily_flow_with_samples(prices, raw_rows, ticker)
     schedule = session_schedule(daily.date.iloc[0], daily.date.iloc[-1])
     fields = [*AMOUNTS, "total_notional", "neutral_notional", "sample_count"]
-    raw = pd.DataFrame(raw_rows, columns=["time", *fields]).drop_duplicates()
     hourly_rows, reconciliation = [], []
     for session in schedule.itertuples():
         start = session.open.value // 1_000_000

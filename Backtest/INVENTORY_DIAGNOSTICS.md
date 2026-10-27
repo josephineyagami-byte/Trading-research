@@ -520,3 +520,47 @@ institutional truth. It demonstrates that this pilot is not an interchangeable
 replacement for the unfiltered computation. The preview shows the reference
 20-session curve and the sensitivity warning. Production eligibility remains
 false; no new website snapshot is published from this trial.
+
+### Audit Boundary Fixes
+
+Daily delta and cumulative arithmetic now have independent eligibility masks.
+A missing saved cumulative value cannot suppress a wrong, otherwise checkable
+daily delta. Missing participation or volume cannot suppress a cumulative
+self-consistency mismatch when observed deltas are available. An interior
+unknown delta stops cumulative verification from that row onward; it is not
+filled with zero. A leading warm-up is counted separately. `pass` requires
+every row to be fully checked; `partial` and `unavailable` are explicit states.
+
+In the fixed INTC / TSLA replay, each full 128-session input has 39 leading
+warm-up rows and 89 fully checked rows, with zero arithmetic mismatches and
+zero other incomplete rows. This is now reported as `partial`, not a full-input
+pass. The 87-session analysis-window coverage and the source-sensitivity
+finding are unchanged; the audit correction does not establish model validity.
+
+Numeric conversion, validation and deduplication now happen in one shared
+sample normalizer. The daily and session-anchored hourly calculations reuse
+the same normalized regular-session frame. Numeric JSON strings and equivalent
+numeric/string duplicates therefore cannot break the hourly path or change
+its totals. The offline legacy replay uses the same numeric normalization,
+while retaining its documented legacy filters.
+
+### Full-Sequence Preaggregation Compatibility
+
+The website's existing `shared/db/trade_flow.py` is not a drop-in cache for
+`api/repositories/market/main_flow.py`. It carries the last nonzero tick
+direction over equal-price trades, seeds a prior window, orders ties using
+sequence number and does not retain the four notional-size tiers. The current
+main-flow query instead treats equal prices and gaps over 60 seconds as
+neutral, orders ties by timestamp/id and restarts its lag at query bounds.
+Substituting the existing table would change both the rule and available
+metrics, even without checksum sampling.
+
+A compatible future cache must classify the complete available ordered trade
+sequence before any sampling, preserve explicitly versioned tie/neutral/gap
+rules and the four size tiers, and make chunk-boundary state explicit. Both
+hourly and daily amounts should then derive from the same versioned five-minute
+cache. Before replacing the current source, compare short bounded windows
+against the unfiltered calculation, test split-window versus uninterrupted
+classification, and verify duplicate/correction handling. This turn only
+checked compatibility; it did not migrate the database, backfill full TSLA
+trades, or certify a new production flow source.

@@ -53,6 +53,24 @@ class CaseAuditTests(unittest.TestCase):
         _, hourly, _, _ = timeframe_audit(prices, rows, "TSLA")
         self.assertEqual(hourly.groupby("date").expectedBars.apply(list).tolist(), [[12,12,12,6], [12,12,12,12,12,12,6]])
 
+    def test_numeric_strings_use_the_same_normalized_samples_at_every_timeframe(self):
+        prices, rows = fixture("2025-03-06", "2025-03-06")
+        strings = [{key: str(value) for key, value in row.items()} for row in rows]
+        expected = timeframe_audit(prices, rows, "INTC")
+        actual = timeframe_audit(prices, strings, "INTC")
+        for a, b in zip(actual[:2], expected[:2]):
+            pd.testing.assert_frame_equal(a, b)
+        self.assertEqual(actual[2:], expected[2:])
+
+    def test_equivalent_numeric_and_string_duplicates_are_counted_once(self):
+        prices, rows = fixture("2025-03-06", "2025-03-06")
+        duplicate = {key: str(value) for key, value in rows[0].items()}
+        expected = timeframe_audit(prices, rows, "INTC")
+        actual = timeframe_audit(prices, rows+[duplicate], "INTC")
+        for a, b in zip(actual[:2], expected[:2]):
+            pd.testing.assert_frame_equal(a, b)
+        self.assertEqual(actual[2:], expected[2:])
+
     def test_missing_bucket_can_reconcile_but_does_not_pass_coverage(self):
         prices, rows = fixture()
         daily, hourly, _, audit = timeframe_audit(prices, rows[1:], "INTC")
@@ -100,6 +118,67 @@ class CaseAuditTests(unittest.TestCase):
         self.assertGreater(result["deltaMismatchRows"], 0)
         pd.testing.assert_frame_equal(d, before)
 
+    def test_missing_cumulative_cannot_hide_a_wrong_daily_delta(self):
+        d = legacy()
+        d.loc[2, "delta_inventory"] = 999999.
+        d.loc[2, "cumulative_inventory"] = np.nan
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "mismatch")
+        self.assertEqual(result["deltaMismatchRows"], 1)
+        self.assertEqual(result["deltaCheckedRows"], 3)
+        self.assertEqual(result["cumulativeCheckedRows"], 2)
+
+    def test_missing_cumulative_is_partial_not_a_full_pass(self):
+        d = legacy()
+        d.loc[2, "cumulative_inventory"] = np.nan
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["checkedRows"], 2)
+        self.assertEqual(result["unexpectedIncompleteRows"], 1)
+        self.assertEqual(result["deltaMismatchRows"], 0)
+
+    def test_missing_formula_input_cannot_hide_a_wrong_cumulative_value(self):
+        d = legacy()
+        d.loc[2, "volume"] = np.nan
+        d.loc[2, "cumulative_inventory"] = 500.
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "mismatch")
+        self.assertEqual(result["deltaCheckedRows"], 2)
+        self.assertEqual(result["cumulativeCheckedRows"], 3)
+        self.assertEqual(result["cumulativeMismatchRows"], 1)
+
+    def test_unknown_delta_stops_subsequent_cumulative_verification(self):
+        d = legacy()
+        d.loc[1, "delta_inventory"] = np.nan
+        d.loc[2, "cumulative_inventory"] = 500.
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["cumulativeCheckedRows"], 1)
+        self.assertEqual(result["cumulativeMismatchRows"], 0)
+        self.assertEqual(result["unexpectedIncompleteRows"], 2)
+
+    def test_leading_warmup_is_counted_without_inventing_values(self):
+        d = legacy()
+        fields = ["trade_signal", "est_inst_participation", "volume", "delta_inventory", "cumulative_inventory"]
+        d.loc[0, fields] = [None, np.nan, np.nan, np.nan, np.nan]
+        d.loc[1:, "cumulative_inventory"] = [0., -20.]
+        before = d.copy(deep=True)
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["checkedRows"], 2)
+        self.assertEqual(result["leadingWarmupRows"], 1)
+        self.assertEqual(result["unexpectedIncompleteRows"], 0)
+        pd.testing.assert_frame_equal(d, before)
+
+    def test_all_unknown_legacy_values_are_unavailable_not_pass(self):
+        d = legacy()
+        d["trade_signal"] = None
+        d[["est_inst_participation", "volume", "delta_inventory", "cumulative_inventory"]] = np.nan
+        result = legacy_formula_audit(d)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["deltaCheckedRows"], 0)
+        self.assertEqual(result["cumulativeCheckedRows"], 0)
+
     def test_missing_legacy_or_nonfinite_values_do_not_pass(self):
         self.assertEqual(legacy_formula_audit(pd.DataFrame())["status"], "unavailable")
         with self.assertRaises(ValueError):
@@ -112,11 +191,25 @@ class CaseAuditTests(unittest.TestCase):
             return frame.assign(hmm_state=-1, hmm_label="neutral", hmm_strength=0.)
         with patch("legacy_case_replay.v53.fit_hmm_safe", side_effect=neutral), patch("requests.get", side_effect=AssertionError("No network in offline replay")), redirect_stdout(io.StringIO()):
             out, metadata = replay_repository(prices, rows, "TSLA")
-        self.assertEqual(legacy_formula_audit(out)["status"], "pass")
+        audit = legacy_formula_audit(out)
+        self.assertEqual(audit["status"], "partial")
+        self.assertGreater(audit["leadingWarmupRows"], 0)
+        self.assertEqual(audit["unexpectedIncompleteRows"], 0)
         self.assertTrue(metadata["samePriceInputsVerified"])
         self.assertFalse(metadata["reproducesCaseStudy"])
         self.assertTrue(out.relative_regime.eq("relative_unavailable").all())
         self.assertTrue(out.short_regime.eq("short_volume_missing").all())
+
+    def test_repository_replay_normalizes_numeric_strings_and_duplicates(self):
+        from legacy_case_replay import replay_repository
+        prices, rows = fixture("2025-01-02", "2025-06-30")
+        strings = [{key: str(value) for key, value in row.items()} for row in rows]
+        def neutral(frame, n_states):
+            return frame.assign(hmm_state=-1, hmm_label="neutral", hmm_strength=0.)
+        with patch("legacy_case_replay.v53.fit_hmm_safe", side_effect=neutral), patch("requests.get", side_effect=AssertionError("No network in offline replay")), redirect_stdout(io.StringIO()):
+            expected, _ = replay_repository(prices, rows, "TSLA")
+            actual, _ = replay_repository(prices, strings+[rows[0]], "TSLA")
+        pd.testing.assert_frame_equal(actual, expected)
 
     def test_sampling_sensitivity_is_not_reported_as_prediction_accuracy(self):
         prices, rows = fixture()
@@ -138,12 +231,17 @@ class CaseAuditTests(unittest.TestCase):
         protocol = Path(__file__).resolve().parents[1]/"Backtest"/"flow_case_protocol.json"
         with tempfile.TemporaryDirectory() as directory:
             output = build_pilot(protocol, directory)
+            output["cases"][0]["legacy"] = {"status": "partial", "checkedRows": 2, "totalRows": 3,
+                                             "leadingWarmupRows": 1, "unexpectedIncompleteRows": 0}
             html = render(output)
         self.assertIn('lang="en"', html)
         self.assertIn('data-locale="zh"', html)
         self.assertIn('not out-of-sample validation', html)
         self.assertIn('RGTI and BBAI: not run', html)
         self.assertNotIn('src="https://cdn.plot.ly', html)
+        self.assertIn('Legacy arithmetic: full input', html)
+        self.assertIn('部分可核验', html)
+        self.assertIn('</span> 2/3', html)
 
     def test_uncollected_cases_remain_unavailable_and_pending_not_manipulated(self):
         protocol = Path(__file__).resolve().parents[1]/"Backtest"/"flow_case_protocol.json"
