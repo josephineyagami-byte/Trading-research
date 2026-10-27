@@ -564,3 +564,80 @@ against the unfiltered calculation, test split-window versus uninterrupted
 classification, and verify duplicate/correction handling. This turn only
 checked compatibility; it did not migrate the database, backfill full TSLA
 trades, or certify a new production flow source.
+
+### Prefix-Only Legacy Diagnostic
+
+`run_flow_cases.py --forward-repository` now adds `legacyForward` beside the
+unchanged retrospective legacy comparison. It requires 100 prior bars and
+refits a three-state HMM on the expanding prior window. Scaling and the
+training state-to-label map exclude the decision bar. Only the last filtered
+posterior of the available prefix is consumed; training profiles are decoded
+on training data separately. Merely setting a train/test cutoff while decoding
+the entire future sequence with Viterbi is not this contract.
+
+Reliability and scoring are recomputed on each available prefix, but only its
+endpoint is retained. Cumulative modeled changes are rebuilt from those saved
+endpoints, never copied from a newly rescored history. Missing recent flow,
+insufficient training and unstable fits stay unavailable. An interior failed
+decision invalidates subsequent continuous cumulative values; it is not zero.
+Likelihood decline or failure to reach the fit tolerance does not silently
+fall back to neutral or full-sample HMM fitting in this path.
+
+On the existing sampled 87-session case window, INTC has 27 available endpoints,
+59 insufficient-training dates and 1 failed fit. TSLA has 23 available endpoints,
+59 insufficient-training dates and 5 failed fits. These results expose limited
+coverage and fit instability, not improved investment performance. The sampled
+source remains sensitive, historical parameter/data vintages are unverified,
+and benchmark/short-volume/dark-pool context is still absent. No return or
+holdings claim is made. Append-future regression tests verify that later data
+cannot change already retained endpoint decisions.
+
+Method references: [hmmlearn decoding and posterior API](https://hmmlearn.readthedocs.io/en/stable/api.html).
+The legacy full-sample path remains available for comparison, not as a causal
+backtest. Add `--forward-repository` to the pilot rebuild command above to
+include the new diagnostics in its preview.
+
+### Complete-Sequence Five-Minute Cache
+
+`integrations/us_stock/ops/export_sequence_flow.py` adds an isolated read-only
+cache producer, versioned `full-sequence-tick-rule-v2`. It does not apply a
+checksum subset. It reads an extra 60 seconds before the target window,
+classifies all available ordered neighbors first, then trims and aggregates
+complete five-minute buckets. Equal-price trades and gaps over 60 seconds
+remain neutral; timestamp/id tie ordering and the four fixed USD tiers are
+explicit. The gap is measured at the source's nanosecond precision, rather
+than the old query's rounded millisecond gap, so its 60-second seed is also
+valid at submillisecond boundary cases. This is a versioned rule change, not
+an assertion of exact old-query identity. It is also distinct from the
+existing carried-tick `trade_flow` table.
+
+Each request is limited to one historical day, at most 45 seconds, two query
+threads, 1 GiB and 100 million rows read. Only successful validated results are
+atomically saved with request/rule/row hashes under `.runtime-config`, with
+private file permissions. Matching verified caches are reused without another
+query. Run exports serially. Empty results remain empty observed buckets, not
+manufactured zero-flow sessions. No website service or source table changes.
+
+The optional `--verify-split` runs up to three bounded queries and compares all
+eight tier/side amounts, neutral/total notional and counts between one whole
+window and two adjacent halves. Half-window receipts stay under `.split-checks`
+so ordinary page loading cannot double-count overlapping verification inputs.
+An all-empty comparison is unavailable, not a
+pass. This checks partition invariance, not raw-tape completeness or institution
+identity. Query-boundary seed behavior follows the explicitly framed
+[ClickHouse lagInFrame](https://clickhouse.com/docs/reference/functions/window-functions/lagInFrame)
+contract. The producer and split-check safety tests run locally; execution
+against the teacher server still requires a restored SSH session. It has not
+backfilled complete INTC/TSLA history or replaced the sampled pilot/production
+website. Every exported page remains `productionEligible: false`.
+
+Example after the reviewed script is on the server, using a separate cache
+directory rather than the sampled case input:
+
+```bash
+/root/US_stock/venv/bin/python export_sequence_flow.py \
+  --root /root/US_stock \
+  --output /root/US_stock/.runtime-config/flow-sequence-v2-check \
+  --ticker INTC --from 2025-10-01T14:00:00Z --to 2025-10-01T14:10:00Z \
+  --max-query-seconds 30 --verify-split
+```

@@ -15,7 +15,8 @@ import signal_generator_v4 as v4
 import signal_generator_v5_3 as v53
 
 
-def replay_repository(prices, raw_rows, ticker):
+def prepare_repository_inputs(prices, raw_rows):
+    """Retain the legacy feature/filter contract without fitting or scoring."""
     bars = prices.copy()
     bars["datetime"] = pd.to_datetime(bars.datetime, utc=True).dt.tz_localize(None)
     if "timestamp" not in bars:
@@ -37,6 +38,11 @@ def replay_repository(prices, raw_rows, ticker):
     bars = v53._empty_short_context(bars)
     bars = v53._empty_darkpool_context(bars)
     bars["relative_regime"] = "relative_unavailable"
+    return bars
+
+
+def replay_repository(prices, raw_rows, ticker):
+    bars = prepare_repository_inputs(prices, raw_rows)
     bars = v53.fit_hmm_safe(bars, n_states=3)
     bars = v53.compute_signal(bars, ticker=ticker)
     metadata = {

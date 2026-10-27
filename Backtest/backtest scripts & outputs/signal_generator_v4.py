@@ -622,7 +622,7 @@ def merge_flow(df: pd.DataFrame, flow_df: pd.DataFrame) -> pd.DataFrame:
 # ══════════════════════════════════════════════
 
 def fit_hmm(df: pd.DataFrame, n_states: int = 3,
-            train_end: str = None) -> pd.DataFrame:
+            train_end: str = None, *, causal_endpoint: bool = False) -> pd.DataFrame:
     """
     3-state Gaussian HMM trained on 5-6 features.
 
@@ -631,8 +631,11 @@ def fit_hmm(df: pd.DataFrame, n_states: int = 3,
                  up to this date. The trained model then predicts states for
                  the entire dataset including future bars it has never seen.
 
-      This prevents the model from "memorizing" the validation period and
-      gives a true out-of-sample estimate of signal quality.
+      Train-only fitting alone does not make batch Viterbi decoding causal.
+      causal_endpoint=True additionally requires exactly one decision bar after
+      training, freezes training state profiles, and filters that endpoint using
+      only its available prefix. Too little training raises instead of refitting
+      on the full frame. Historical parameter/data vintages remain unverified.
 
     Example:
       train_end="2025-06-30"
@@ -642,9 +645,19 @@ def fit_hmm(df: pd.DataFrame, n_states: int = 3,
 
     Note: BIC-based state selection disabled — overfits on <3600 bars.
     """
+    if causal_endpoint and not train_end:
+        raise ValueError("A causal endpoint requires an explicit prior training end")
+    if causal_endpoint:
+        dates = pd.to_datetime(df["datetime"])
+        if dates.isna().any() or dates.duplicated().any() or not dates.is_monotonic_increasing:
+            raise ValueError("Causal HMM observations must be unique and chronological")
+        if (dates > pd.Timestamp(train_end)).sum() != 1:
+            raise ValueError("A causal HMM call must end at one decision bar after training")
     try:
         from hmmlearn.hmm import GaussianHMM
     except ImportError:
+        if causal_endpoint:
+            raise
         print("[WARN] hmmlearn not installed, skipping HMM")
         df["hmm_state"] = 0
         df["hmm_label"] = "neutral"
@@ -668,6 +681,8 @@ def fit_hmm(df: pd.DataFrame, n_states: int = 3,
         print(f"[HMM] Out-of-sample split: train={n_train} bars (≤{train_end}), "
               f"test={n_test} bars (>{train_end})")
         if n_train < 100:
+            if causal_endpoint:
+                raise ValueError("At least 100 prior bars are required; no full-sample fallback")
             print("[WARN] Too few training bars, using full dataset")
             train_end = None
 
@@ -680,7 +695,19 @@ def fit_hmm(df: pd.DataFrame, n_states: int = 3,
         model = GaussianHMM(n_components=n_states, covariance_type="full",
                             n_iter=200, random_state=42)
         model.fit(X_scaled_train)
-        states = model.predict(X_scaled_all)  # predict on ALL bars
+        if causal_endpoint:
+            history = list(model.monitor_.history)
+            if (len(history) < 2 or not np.isfinite(history).all()
+                    or history[-1]-history[-2] < -1e-6
+                    or history[-1]-history[-2] >= model.tol):
+                raise ValueError("Causal HMM fit did not reach a stable likelihood tolerance")
+            train_states = model.predict(X_scaled_train)
+            # Only the final filtered probability is consumed. Earlier smoothed
+            # test probabilities cannot rewrite frozen training profiles.
+            _, posterior = model.score_samples(X_scaled_all)
+            states = np.r_[train_states, int(np.argmax(posterior[-1]))]
+        else:
+            states = model.predict(X_scaled_all)  # retrospective batch decoding
         print(f"[HMM] Model trained on train set only → predicting full dataset")
     else:
         scaler.fit(X_all)

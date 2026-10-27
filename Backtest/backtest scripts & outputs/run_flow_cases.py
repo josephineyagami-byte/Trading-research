@@ -18,7 +18,7 @@ def records(frame):
     return json.loads(frame.to_json(orient="records", date_format="iso"))
 
 
-def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False, reference_flow_dir=None):
+def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False, reference_flow_dir=None, forward_legacy=False):
     prices_path, flow_path = folder/"prices.csv", folder/"flow-pages"
     result = {"ticker": case["ticker"], "question": case["question"], "events": case["events"],
               "status": "unavailable", "reproducesCaseStudy": False}
@@ -108,10 +108,23 @@ def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False, re
             result["comparison"] = {"status": "descriptive_only", "pairedSessions": int(eligible.sum()),
                 "zeroLegacyDeltaWithNonzeroSampledNet": int((eligible & paired.delta_inventory.abs().le(.01) & paired.sampledLargeNetUsd.abs().gt(.01)).sum()),
                 "meaning": "Zero modeled share change can reflect an unconfirmed trade signal, not absent sampled trading. This is not a predictive-accuracy comparison."}
+    if forward_legacy:
+        from legacy_forward_replay import replay_forward
+        forward, metadata = replay_forward(prices, raw, case["ticker"])
+        dates = pd.to_datetime(forward.datetime, utc=True).dt.strftime("%Y-%m-%d")
+        view = forward.loc[dates.between(protocol["analysisStart"], protocol["analysisEnd"])].copy()
+        view["date"] = dates.loc[view.index]
+        counts = {key: int(value) for key, value in view.decisionStatus.value_counts().items()}
+        available = counts.get("available", 0)
+        result["legacyForward"] = {**metadata,
+            "status": "available" if available == len(view) else "partial" if available else "unavailable",
+            "analysisDecisionCounts": counts, "analysisSessions": len(view),
+            "arithmeticAudit": legacy_formula_audit(forward),
+            "series": records(view)}
     return result
 
 
-def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False, reference_intc_flow_dir=None):
+def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False, reference_intc_flow_dir=None, forward_legacy=False):
     protocol_path = Path(protocol_path)
     protocol = json.loads(protocol_path.read_text())
     if protocol.get("schema") != "flow-case-protocol-v1" or protocol.get("evaluationStatus") != "descriptive_case_study_not_out_of_sample":
@@ -132,7 +145,7 @@ def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False, ref
         "productionEligible": False,
         "formulas": FORMULAS,
         "cases": [build_case(c, protocol, Path(root)/c["ticker"], (legacy_paths or {}).get(c["ticker"]), replay_legacy,
-                             reference_intc_flow_dir if c["ticker"] == "INTC" else None) for c in cases],
+                             reference_intc_flow_dir if c["ticker"] == "INTC" else None, forward_legacy) for c in cases],
     }
 
 
@@ -143,10 +156,11 @@ def main():
     p.add_argument("--legacy-intc")
     p.add_argument("--legacy-tsla")
     p.add_argument("--replay-repository", action="store_true", help="Offline full-sample legacy diagnostic; not a predictive backtest")
+    p.add_argument("--forward-repository", action="store_true", help="Separate prefix-only endpoint diagnostic; not unseen/vintage-verified performance")
     p.add_argument("--reference-intc-flow-dir", help="More-complete stored INTC snapshots for a sampling-sensitivity check")
     p.add_argument("--output", required=True)
     a = p.parse_args()
-    data = build_pilot(a.protocol, a.input_root, {k: v for k, v in [("INTC", a.legacy_intc), ("TSLA", a.legacy_tsla)] if v}, a.replay_repository, a.reference_intc_flow_dir)
+    data = build_pilot(a.protocol, a.input_root, {k: v for k, v in [("INTC", a.legacy_intc), ("TSLA", a.legacy_tsla)] if v}, a.replay_repository, a.reference_intc_flow_dir, a.forward_repository)
     destination = Path(a.output)
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as handle:

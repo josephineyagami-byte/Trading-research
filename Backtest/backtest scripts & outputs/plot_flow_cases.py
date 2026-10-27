@@ -67,6 +67,29 @@ def figure(case):
                        config={"responsive":True,"scrollZoom":True,"displaylogo":False})
 
 
+def forward_section(case):
+    forward = case.get("legacyForward")
+    if forward is None:
+        return ""
+    names = {"available": ("Available", "可计算"), "insufficient_training": ("Insufficient training", "训练不足"),
+             "incomplete_recent_flow": ("Incomplete recent flow", "近期成交样本不完整"),
+             "feature_unavailable": ("Features unavailable", "特征不可用"), "fit_unavailable": ("Fit unavailable", "拟合不可用")}
+    counts = forward["analysisDecisionCounts"]
+    summary = "; ".join(f"{label(*names[key])}: {count}" for key, count in counts.items())
+    def number(value):
+        return f"{value:.3f}" if value is not None else "—"
+    rows = "".join(f"<tr><td>{escape(row['date'])}</td><td>{label(*names[row['decisionStatus']])}</td>"
+                   f"<td>{escape(row['trainingEnd'] or '—')}</td><td>{number(row['final_score'])}</td>"
+                   f"<td>{number(row['delta_inventory'])}</td></tr>" for row in forward["series"])
+    return f'''<h3>{label('Prefix-only forward diagnostic','逐日前向诊断')}</h3>
+<p>{summary}</p>
+<p class="muted">{label('Minimum 100 prior bars. Failed fits remain unavailable. Each date keeps only its own endpoint; later observations do not rewrite saved decisions. Parameters and data vintages are not historically verified. This is not unseen validation, strategy performance or actual holdings.', '至少需要 100 根历史 K 线。拟合失败保留为不可用。每个日期仅保留当日结果，后续数据不改写历史决策。参数和数据版本尚未按历史时点验证，不代表未见数据验证、策略收益或真实持仓。')}</p>
+<details><summary>{label('Forward decision history','前向诊断明细')}</summary><div class="table-scroll"><table><thead><tr>
+<th>{label('Date','日期')}</th><th>{label('Status','状态')}</th><th>{label('Training end','训练截止')}</th>
+<th>{label('Model score','模型评分')}</th><th>{label('Modeled share change','模拟股份变化')}</th>
+</tr></thead><tbody>{rows}</tbody></table></div></details>'''
+
+
 def render(data):
     check_preview_contract(data)
     from plotly.offline import get_plotlyjs
@@ -98,6 +121,7 @@ def render(data):
 {figure(case) if case.get('series') else '<p class="warning">No validated flow snapshot is available. Missing observations are not zero.</p>'}
 {events}<p class="muted" data-en="Different units: the legacy panel is modeled share pressure; the new panels use sampled USD notional. Their levels are not interchangeable. No trading-performance result is claimed." data-zh="单位不同：旧版是模拟股份压力，新版按样本美元成交额计算，数值不可直接互换。本页不宣称交易绩效。">Different units: the legacy panel is modeled share pressure; the new panels use sampled USD notional. Their levels are not interchangeable. No trading-performance result is claimed.</p>
 <p class="muted" data-en="Legacy HMM fitting and reliability use the full sample. Benchmark, short-volume and dark-pool context are absent in this offline replay. This is not an exact reproduction of the case-study screenshots." data-zh="本次旧版诊断采用全样本 HMM 与可靠度计算；未接入基准、做空成交量及暗池背景，不是案例截图的精确复现。">Legacy HMM fitting and reliability use the full sample. Benchmark, short-volume and dark-pool context are absent in this offline replay. This is not an exact reproduction of the case-study screenshots.</p>
+{forward_section(case)}
 <details><summary data-en="Descriptive states and source evidence" data-zh="描述性状态与来源依据">Descriptive states and source evidence</summary>
 <table><thead><tr><th>{label('State','描述性状态')}</th><th>{label('Sessions','交易日数')}</th></tr></thead><tbody>{rows}</tbody></table><p>Missing / partial dates: {escape(gaps)}</p>
 <p>Price SHA256: <code>{escape(case.get('priceSha256','unavailable'))}</code></p><p>Flow fingerprint: <code>{escape(case.get('flowFingerprint','unavailable'))}</code></p>
@@ -116,6 +140,7 @@ def render(data):
             f"INTC 来源敏感性：五日方向与更完整存储样本同号 {w5['sameSignSessions']}/{w5['comparedSessions']} 天，二十日同号 {w20['sameSignSessions']}/{w20['comparedSessions']} 天。抽样及样本相邻成交判向会改变结果。这不是预测准确率，不能用此试验替代未抽样算法。")+'</p>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>*{{box-sizing:border-box}}body{{margin:0;background:#0c1013;color:#dbe2e7;font:15px/1.6 Arial,sans-serif}}main{{max-width:1380px;margin:auto;padding:24px}}header{{display:flex;justify-content:space-between;align-items:center;gap:16px}}h1{{font-size:25px;margin:0}}h2{{font-size:22px;margin:0}}h3{{font-size:17px}}button{{background:#172127;color:#dbe2e7;border:1px solid #46535c;border-radius:4px;padding:7px 12px;cursor:pointer}}button[aria-pressed=true]{{color:#21c6c9;border-color:#21c6c9}}section{{border-top:1px solid #34414a;margin-top:28px;padding-top:20px}}.section-heading{{display:flex;align-items:center;justify-content:space-between}}.section-heading span,.muted,dt{{color:#9aa8b2}}.warning{{padding:14px 0;border-block:1px solid #8d742b;color:#edc76c}}.question{{max-width:950px}}dl{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:20px 0}}dd{{font-size:20px;margin:6px 0;font-variant-numeric:tabular-nums}}dt{{font-size:13px}}a{{color:#52cbd4}}details{{padding:15px 0}}summary{{cursor:pointer}}table{{border-collapse:collapse;width:100%;margin:12px 0}}td,th{{text-align:left;padding:9px;border-bottom:1px solid #293138}}code{{overflow-wrap:anywhere}}.plotly-graph-div{{width:100%}}@media(max-width:650px){{main{{padding:16px 10px}}header{{align-items:flex-start}}h1{{font-size:21px}}dl{{grid-template-columns:1fr;gap:10px}}dl>div{{display:flex;justify-content:space-between;gap:12px}}dd{{font-size:17px;margin:0}}dt{{max-width:70%}}}}</style>
+<style>.table-scroll{{overflow:auto}}.table-scroll table{{min-width:620px}}.table-scroll td{{font-variant-numeric:tabular-nums}}</style>
 <script>{get_plotlyjs()}</script></head><body><main><header><h1 data-en="{title}" data-zh="INTC / TSLA 资金流案例">{title}</h1><div><button type="button" data-locale="en" aria-pressed="true">EN</button> <button type="button" data-locale="zh" aria-pressed="false">中文</button></div></header>
 <p>{escape(p['analysisStart'])} / {escape(p['analysisEnd'])}</p>
 <p class="warning" data-en="Historical case diagnostic. Parameters were frozen for this pilot, but the window was selected after reading the case studies. This is not out-of-sample validation, verified institutional holdings or live market data." data-zh="历史案例诊断。本轮参数固定，但窗口在阅读案例后选定，不属于未见数据验证，也不代表真实机构持仓或实时行情。">Historical case diagnostic. Parameters were frozen for this pilot, but the window was selected after reading the case studies. This is not out-of-sample validation, verified institutional holdings or live market data.</p>
