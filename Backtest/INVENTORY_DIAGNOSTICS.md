@@ -494,6 +494,7 @@ After downloading the private completed export into a local ignored directory:
 .venv/bin/python 'Backtest/backtest scripts & outputs/run_flow_cases.py' \
   --input-root local-artifacts/flow-cases-20261027/inputs-prefix0 \
   --replay-repository \
+  --reference-intc-flow-dir local-artifacts/flow-cases-20261027/inputs-reference/INTC/flow-pages \
   --output local-artifacts/flow-cases-20261027/pilot.json
 
 .venv/bin/python 'Backtest/backtest scripts & outputs/plot_flow_cases.py' \
@@ -508,3 +509,14 @@ The optional PNG uses Matplotlib without browser/network access. A static
 figure check does not verify HTML interaction or mobile layout. Browser policy
 currently blocks agent navigation to `file:` URLs; do not bypass that restriction.
 Raw snapshots and derived case datasets stay local/private, not in this fork.
+
+The first source-sensitivity check found that both 5-session and 20-session INTC
+pressure signs agreed with the more-complete stored reference on only 36 of 87
+analysis dates. The checksum subset contained about 6.17% of the reference USD
+notional, but selecting trades before recomputing tick direction changes both
+the observed set and the neighbor relation. This is **not prediction accuracy**,
+an isolated estimate of sampling error, or a validation of either series against
+institutional truth. It demonstrates that this pilot is not an interchangeable
+replacement for the unfiltered computation. The preview shows the reference
+20-session curve and the sensitivity warning. Production eligibility remains
+false; no new website snapshot is published from this trial.

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"Backtest"/"backtest scripts & outputs"))
-from flow_case_audit import describe_price_flow, legacy_formula_audit, timeframe_audit
+from flow_case_audit import describe_price_flow, legacy_formula_audit, sampling_sensitivity, timeframe_audit
 from flow_estimator import AMOUNTS, session_schedule
 from run_flow_cases import build_pilot
 
@@ -117,6 +117,21 @@ class CaseAuditTests(unittest.TestCase):
         self.assertFalse(metadata["reproducesCaseStudy"])
         self.assertTrue(out.relative_regime.eq("relative_unavailable").all())
         self.assertTrue(out.short_regime.eq("short_volume_missing").all())
+
+    def test_sampling_sensitivity_is_not_reported_as_prediction_accuracy(self):
+        prices, rows = fixture()
+        daily = timeframe_audit(prices, rows, "INTC")[0]
+        subset = daily.copy()
+        subset["sampledNotionalUsd"] *= .5
+        subset["pressure5"] *= -1
+        subset["pressure20"] *= -1
+        result = sampling_sensitivity(daily, subset, "2025-03-06", "2025-04-10")
+        self.assertAlmostEqual(result["measuredNotionalFraction"], .5)
+        self.assertEqual(result["windows"]["pressure5"]["sameSignSessions"], 0)
+        self.assertIsNone(result["predictiveAccuracy"])
+        subset["sampledNotionalUsd"] *= 3
+        with self.assertRaises(ValueError):
+            sampling_sensitivity(daily, subset, "2025-03-06", "2025-04-10")
 
     def test_html_preview_is_self_contained_and_retains_qualifications(self):
         from plot_flow_cases import render

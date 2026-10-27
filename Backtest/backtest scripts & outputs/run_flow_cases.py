@@ -10,15 +10,15 @@ import tempfile
 
 import pandas as pd
 
-from flow_case_audit import FORMULAS, describe_price_flow, legacy_formula_audit, timeframe_audit
-from flow_estimator import load_flow_checkpoints
+from flow_case_audit import FORMULAS, describe_price_flow, legacy_formula_audit, sampling_sensitivity, timeframe_audit
+from flow_estimator import estimate_daily_flow, load_flow_checkpoints
 
 
 def records(frame):
     return json.loads(frame.to_json(orient="records", date_format="iso"))
 
 
-def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False):
+def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False, reference_flow_dir=None):
     prices_path, flow_path = folder/"prices.csv", folder/"flow-pages"
     result = {"ticker": case["ticker"], "question": case["question"], "events": case["events"],
               "status": "unavailable", "reproducesCaseStudy": False}
@@ -68,6 +68,22 @@ def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False):
         "legacy": {"status": "unavailable", "reason": "No same-window legacy output was supplied."},
         "performance": None,
     })
+    if reference_flow_dir is not None:
+        reference_flow_dir = Path(reference_flow_dir)
+        reference_page = json.loads(next(reference_flow_dir.glob("flow-*.json")).read_text())
+        if reference_page["request"]["source"]+":checksum-prefix-0" != source_id:
+            raise ValueError("Use the same repository formula without the checksum subset as reference")
+        reference = estimate_daily_flow(prices, load_flow_checkpoints(reference_flow_dir, case["ticker"]), case["ticker"])
+        sampled = daily.copy()
+        sampled["date"] = pd.to_datetime(sampled.date)
+        result["samplingSensitivity"] = sampling_sensitivity(reference, sampled, protocol["analysisStart"], protocol["analysisEnd"])
+        reference_pages = sorted(reference_flow_dir.glob("flow-*.json"))
+        result["samplingSensitivity"]["referenceFingerprint"] = hashlib.sha256(b"".join(p.name.encode()+hashlib.sha256(p.read_bytes()).digest() for p in reference_pages)).hexdigest()
+        ref = reference[["date", "pressure5", "pressure20"]].copy()
+        ref["date"] = ref.date.dt.strftime("%Y-%m-%d")
+        ref = ref.rename(columns={"pressure5":"referencePressure5", "pressure20":"referencePressure20"})
+        result["series"] = records(selected.merge(ref, on="date", validate="one_to_one"))
+        result["samplingSensitivity"]["interpretationReadiness"] = "source_sensitive_do_not_substitute"
     if legacy_path is not None or replay_legacy:
         metadata = {}
         if legacy_path is not None:
@@ -95,7 +111,7 @@ def build_case(case, protocol, folder, legacy_path=None, replay_legacy=False):
     return result
 
 
-def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False):
+def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False, reference_intc_flow_dir=None):
     protocol_path = Path(protocol_path)
     protocol = json.loads(protocol_path.read_text())
     if protocol.get("schema") != "flow-case-protocol-v1" or protocol.get("evaluationStatus") != "descriptive_case_study_not_out_of_sample":
@@ -113,8 +129,10 @@ def build_pilot(protocol_path, root, legacy_paths=None, replay_legacy=False):
         "schema": "flow-case-pilot-v1", "protocol": protocol,
         "protocolSha256": hashlib.sha256(protocol_path.read_bytes()).hexdigest(),
         "generatedAt": datetime.now(timezone.utc).isoformat(), "isLive": False, "holdings": None,
+        "productionEligible": False,
         "formulas": FORMULAS,
-        "cases": [build_case(c, protocol, Path(root)/c["ticker"], (legacy_paths or {}).get(c["ticker"]), replay_legacy) for c in cases],
+        "cases": [build_case(c, protocol, Path(root)/c["ticker"], (legacy_paths or {}).get(c["ticker"]), replay_legacy,
+                             reference_intc_flow_dir if c["ticker"] == "INTC" else None) for c in cases],
     }
 
 
@@ -125,9 +143,10 @@ def main():
     p.add_argument("--legacy-intc")
     p.add_argument("--legacy-tsla")
     p.add_argument("--replay-repository", action="store_true", help="Offline full-sample legacy diagnostic; not a predictive backtest")
+    p.add_argument("--reference-intc-flow-dir", help="More-complete stored INTC snapshots for a sampling-sensitivity check")
     p.add_argument("--output", required=True)
     a = p.parse_args()
-    data = build_pilot(a.protocol, a.input_root, {k: v for k, v in [("INTC", a.legacy_intc), ("TSLA", a.legacy_tsla)] if v}, a.replay_repository)
+    data = build_pilot(a.protocol, a.input_root, {k: v for k, v in [("INTC", a.legacy_intc), ("TSLA", a.legacy_tsla)] if v}, a.replay_repository, a.reference_intc_flow_dir)
     destination = Path(a.output)
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as handle:

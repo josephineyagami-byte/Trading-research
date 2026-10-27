@@ -115,3 +115,24 @@ def describe_price_flow(daily):
         out.loc[mask, "state"] = state
     out.loc[valid & ((out.pressure5 == 0) | (out.priceReturn5 == 0)), "state"] = "mixed"
     return out
+
+
+def sampling_sensitivity(reference, sampled, start, end):
+    """Describe a source/method change on paired dates; this is not accuracy."""
+    columns = ["date", "sessionComplete", "sampledNotionalUsd", "pressure5", "pressure20"]
+    paired = reference[columns].merge(sampled[columns], on="date", suffixes=("_reference", "_sampled"), validate="one_to_one")
+    paired = paired.loc[paired.date.between(pd.Timestamp(start), pd.Timestamp(end))]
+    complete = paired.sessionComplete_reference & paired.sessionComplete_sampled
+    r = paired.loc[complete, "sampledNotionalUsd_reference"].sum()
+    s = paired.loc[complete, "sampledNotionalUsd_sampled"].sum()
+    if r > 0 and s > r*(1+1e-7):
+        raise ValueError("A claimed subset exceeds the reference sampled notional")
+    result = {"scope": "INTC only; comparison with more-complete stored samples, not institutional truth",
+              "pairedCompleteSessions": int(complete.sum()), "measuredNotionalFraction": float(s/r) if r > 0 else None,
+              "predictiveAccuracy": None, "windows": {}}
+    for field in ["pressure5", "pressure20"]:
+        mask = complete & paired[field+"_reference"].notna() & paired[field+"_sampled"].notna()
+        a, b = paired.loc[mask, field+"_reference"], paired.loc[mask, field+"_sampled"]
+        result["windows"][field] = {"comparedSessions": int(mask.sum()), "sameSignSessions": int((np.sign(a) == np.sign(b)).sum()),
+                                    "maxDifferencePercentagePoints": float((a-b).abs().max()*100) if len(a) else None}
+    return result

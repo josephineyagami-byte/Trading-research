@@ -48,15 +48,19 @@ def figure(case):
                                 name=name, mode="lines", connectgaps=False, line={"color":color,"width":2}), row=3, col=1)
     fig.add_trace(go.Scatter(x=[r["date"] for r in legacy], y=[r.get("model_flow_pressure_pct") for r in legacy],
                             name="Legacy modeled share pressure", mode="lines", connectgaps=False,
-                            line={"color":"#b0a3e7","width":1.6}), row=4, col=1)
+                            line={"color":"#b0a3e7","width":1.6}, showlegend=False), row=4, col=1)
+    if case.get("samplingSensitivity"):
+        fig.add_trace(go.Scatter(x=x, y=[r.get("referencePressure20")*100 if r.get("referencePressure20") is not None else None for r in rows],
+                                name="Stored reference: 20 sessions", mode="lines", connectgaps=False,
+                                line={"color":"#c4cbd2","width":1.8,"dash":"dash"}), row=3, col=1)
     for n, title in enumerate(["Price (USD)", "Sampled net (USD)", "Flow pressure (%)", "Legacy pressure (%)"], 1):
         fig.update_yaxes(title_text=title, row=n, col=1, zeroline=True, zerolinecolor="#52606b", fixedrange=False)
     fig.update_xaxes(rangeslider_visible=False, tickformat="%Y-%m-%d", gridcolor="#293138")
     fig.update_xaxes(rangeslider={"visible":True,"thickness":.065}, row=4, col=1)
-    fig.update_layout(height=790, template="plotly_dark", paper_bgcolor="#11171c", plot_bgcolor="#11171c",
+    fig.update_layout(height=830, template="plotly_dark", paper_bgcolor="#11171c", plot_bgcolor="#11171c",
                       font={"family":"Arial, sans-serif","size":12,"color":"#dbe2e7"},
-                      margin={"l":75,"r":28,"t":58,"b":45}, hovermode="x unified", dragmode="pan",
-                      legend={"orientation":"h","y":1.08,"x":0}, uirevision=case["ticker"])
+                      margin={"l":75,"r":28,"t":100,"b":45}, hovermode="x unified", dragmode="pan",
+                      legend={"orientation":"h","y":1.03,"yanchor":"bottom","x":0}, uirevision=case["ticker"])
     for event in case["events"]:
         fig.add_vline(x=event["publicationDate"], line_dash="dot", line_color="#e4b44e", line_width=1)
     return fig.to_html(full_html=False, include_plotlyjs=False, div_id=f"chart-{case['ticker']}",
@@ -102,17 +106,25 @@ def render(data):
 <p>Aggregation source: {escape(audit.get('basis','unavailable'))}</p><p>Independent tape verification: false</p></details></section>'''
         sections.append(section)
     title = "INTC / TSLA Flow Cases"
+    sensitivity = next((c["samplingSensitivity"] for c in data["cases"] if c.get("samplingSensitivity")), None)
+    sensitivity_text = ""
+    if sensitivity:
+        w5, w20 = sensitivity["windows"]["pressure5"], sensitivity["windows"]["pressure20"]
+        sensitivity_text = '<p class="warning">'+label(
+            f"INTC source sensitivity: 5-session signs match the more-complete stored reference on {w5['sameSignSessions']}/{w5['comparedSessions']} dates; 20-session signs match on {w20['sameSignSessions']}/{w20['comparedSessions']}. Sampling and selected-neighbor direction change the result. These are not prediction-accuracy rates; do not substitute this pilot for the unfiltered method.",
+            f"INTC 来源敏感性：五日方向与更完整存储样本同号 {w5['sameSignSessions']}/{w5['comparedSessions']} 天，二十日同号 {w20['sameSignSessions']}/{w20['comparedSessions']} 天。抽样及样本相邻成交判向会改变结果。这不是预测准确率，不能用此试验替代未抽样算法。")+'</p>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>*{{box-sizing:border-box}}body{{margin:0;background:#0c1013;color:#dbe2e7;font:15px/1.6 Arial,sans-serif}}main{{max-width:1380px;margin:auto;padding:24px}}header{{display:flex;justify-content:space-between;align-items:center;gap:16px}}h1{{font-size:25px;margin:0}}h2{{font-size:22px;margin:0}}h3{{font-size:17px}}button{{background:#172127;color:#dbe2e7;border:1px solid #46535c;border-radius:4px;padding:7px 12px;cursor:pointer}}button[aria-pressed=true]{{color:#21c6c9;border-color:#21c6c9}}section{{border-top:1px solid #34414a;margin-top:28px;padding-top:20px}}.section-heading{{display:flex;align-items:center;justify-content:space-between}}.section-heading span,.muted,dt{{color:#9aa8b2}}.warning{{padding:14px 0;border-block:1px solid #8d742b;color:#edc76c}}.question{{max-width:950px}}dl{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:20px 0}}dd{{font-size:20px;margin:6px 0;font-variant-numeric:tabular-nums}}dt{{font-size:13px}}a{{color:#52cbd4}}details{{padding:15px 0}}summary{{cursor:pointer}}table{{border-collapse:collapse;width:100%;margin:12px 0}}td,th{{text-align:left;padding:9px;border-bottom:1px solid #293138}}code{{overflow-wrap:anywhere}}.plotly-graph-div{{width:100%}}@media(max-width:650px){{main{{padding:16px 10px}}header{{align-items:flex-start}}h1{{font-size:21px}}dl{{grid-template-columns:1fr;gap:10px}}dl>div{{display:flex;justify-content:space-between;gap:12px}}dd{{font-size:17px;margin:0}}dt{{max-width:70%}}}}</style>
 <script>{get_plotlyjs()}</script></head><body><main><header><h1 data-en="{title}" data-zh="INTC / TSLA 资金流案例">{title}</h1><div><button type="button" data-locale="en" aria-pressed="true">EN</button> <button type="button" data-locale="zh" aria-pressed="false">中文</button></div></header>
 <p>{escape(p['analysisStart'])} / {escape(p['analysisEnd'])}</p>
 <p class="warning" data-en="Historical case diagnostic. Parameters were frozen for this pilot, but the window was selected after reading the case studies. This is not out-of-sample validation, verified institutional holdings or live market data." data-zh="历史案例诊断。本轮参数固定，但窗口在阅读案例后选定，不属于未见数据验证，也不代表真实机构持仓或实时行情。">Historical case diagnostic. Parameters were frozen for this pilot, but the window was selected after reading the case studies. This is not out-of-sample validation, verified institutional holdings or live market data.</p>
 <p class="warning" data-en="Both tickers use the same checksum-prefix-0 subset (nominally 1/16). Direction compares selected trades, not full-tape neighbors. Representativeness is unverified; amounts are not extrapolated to the full market." data-zh="两只股票均使用校验和前缀 0 的子样本，名义比例约 1/16。方向比较的是所选样本成交，不是全量相邻成交。代表性尚未验证，金额不外推为全市场资金。">Both tickers use the same checksum-prefix-0 subset (nominally 1/16). Direction compares selected trades, not full-tape neighbors. Representativeness is unverified; amounts are not extrapolated to the full market.</p>
+{sensitivity_text}
 {''.join(sections)}<section><h2 data-en="Formula version remains unresolved" data-zh="公式版本仍需确认">Formula version remains unresolved</h2>
 <p data-en="Slide 3 uses continuous model bias. The repository uses long / short / otherwise direction. This preview preserves the repository calculation; it does not silently replace it with the slide formula." data-zh="第 3 页使用连续模型倾向，仓库按 long / short / 其他状态确定方向。本页保留仓库算法，没有悄悄换成幻灯片公式。">Slide 3 uses continuous model bias. The repository uses long / short / otherwise direction. This preview preserves the repository calculation; it does not silently replace it with the slide formula.</p>
 <p data-en="RGTI and BBAI: not run. Unusual trading is a hypothesis to test, not an established manipulation label." data-zh="RGTI、BBAI：尚未运行。异常交易是待检验假设，不能认定存在操纵。">RGTI and BBAI: not run. Unusual trading is a hypothesis to test, not an established manipulation label.</p>
 <details><summary>Protocol and reproducibility</summary><p>Protocol SHA256: <code>{escape(data['protocolSha256'])}</code></p><ul>{''.join('<li>'+escape(t)+'</li>' for t in p['limitations'])}</ul></details></section>
-</main><script>document.querySelectorAll('[data-locale]').forEach(b=>b.addEventListener('click',()=>{{const locale=b.dataset.locale;document.documentElement.lang=locale==='zh'?'zh-CN':'en';document.querySelectorAll('[data-en]').forEach(e=>e.textContent=e.dataset[locale]);document.querySelectorAll('[data-locale]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));const titles=locale==='zh'?['价格（美元）','样本净额（美元）','资金压力（%）','旧版压力（%）']:['Price (USD)','Sampled net (USD)','Flow pressure (%)','Legacy pressure (%)'];const names=locale==='zh'?['价格','样本大单净额','五日压力','二十日压力','旧版模拟股份压力']:['Price (USD)','Sampled large net (USD)','5-session pressure','20-session pressure','Legacy modeled share pressure'];document.querySelectorAll('.plotly-graph-div').forEach(g=>{{const update={{}};titles.forEach((t,i)=>update['yaxis'+(i?i+1:'')+'.title.text']=t);Plotly.relayout(g,update);Plotly.restyle(g,{{name:names}},[0,1,2,3,4]);}});}}));</script></body></html>'''
+</main><script>document.querySelectorAll('[data-locale]').forEach(b=>b.addEventListener('click',()=>{{const locale=b.dataset.locale;document.documentElement.lang=locale==='zh'?'zh-CN':'en';document.querySelectorAll('[data-en]').forEach(e=>e.textContent=e.dataset[locale]);document.querySelectorAll('[data-locale]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));const titles=locale==='zh'?['价格（美元）','样本净额（美元）','资金压力（%）','旧版压力（%）']:['Price (USD)','Sampled net (USD)','Flow pressure (%)','Legacy pressure (%)'];const names=locale==='zh'?['价格','样本大单净额','五日压力','二十日压力','旧版模拟股份压力']:['Price (USD)','Sampled large net (USD)','5-session pressure','20-session pressure','Legacy modeled share pressure'];document.querySelectorAll('.plotly-graph-div').forEach(g=>{{const update={{}};titles.forEach((t,i)=>update['yaxis'+(i?i+1:'')+'.title.text']=t);Plotly.relayout(g,update);Plotly.restyle(g,{{name:names}},[0,1,2,3,4]);if(g.data.length>5)Plotly.restyle(g,{{name:locale==='zh'?'更完整存储样本：二十日':'Stored reference: 20 sessions'}},[5]);}});}}));</script></body></html>'''
 
 
 def export_static(data, destination):
@@ -138,7 +150,10 @@ def export_static(data, destination):
         for field, name, color in [("pressure5","5 sessions","#089ba6"),("pressure20","20 sessions","#b77a11")]:
             values = [r[field]*100 if r[field] is not None else np.nan for r in rows]
             axes[2,column].plot(dates,values,label=name,color=color,linewidth=1.4)
-        axes[2,column].legend(loc="upper left",fontsize=8,frameon=False,ncol=2)
+        if case.get("samplingSensitivity"):
+            axes[2,column].plot(dates,[r.get("referencePressure20")*100 if r.get("referencePressure20") is not None else np.nan for r in rows],
+                               label="Stored reference: 20 sessions",color="#53616b",linestyle="--",linewidth=1.3)
+        axes[2,column].legend(loc="upper left",fontsize=7.5,frameon=False,ncol=3,bbox_to_anchor=(0,1.04),borderaxespad=0)
         legacy = case.get("legacy",{}).get("series",[])
         axes[3,column].plot([datetime.fromisoformat(r["date"]) for r in legacy],
                            [r.get("model_flow_pressure_pct") if r.get("model_flow_pressure_pct") is not None else np.nan for r in legacy],
@@ -160,6 +175,11 @@ def export_static(data, destination):
     fig.text(.07,.925,data["protocol"]["analysisStart"]+" to "+data["protocol"]["analysisEnd"]+" | complete 5m sample sessions: "+counts+" | not out-of-sample validation",fontsize=10)
     fig.text(.07,.045,"Both tickers: checksum-prefix-0 subset, nominally 1/16. Direction uses selected trades; no full-market extrapolation.",fontsize=9)
     fig.text(.07,.025,"Legacy: modeled share pressure, full-sample HMM, external context absent. New flow: sampled USD notional. Neither is observed institutional holdings.",fontsize=9)
+    for case in data["cases"]:
+        if case.get("samplingSensitivity"):
+            check = case["samplingSensitivity"]["windows"]
+            a,b = check["pressure5"],check["pressure20"]
+            fig.text(.07,.065,f"INTC source sensitivity: 5-session signs agree {a['sameSignSessions']}/{a['comparedSessions']}; 20-session signs agree {b['sameSignSessions']}/{b['comparedSessions']}. Not predictive accuracy; not a substitute for the stored reference.",fontsize=9)
     fig.subplots_adjust(left=.075,right=.975,top=.88,bottom=.105,hspace=.13,wspace=.24)
     fig.savefig(destination,dpi=160,facecolor="white")
     plt.close(fig)
