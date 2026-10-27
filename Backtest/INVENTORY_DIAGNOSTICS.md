@@ -446,3 +446,65 @@ without printing keys. Run the four staging safety tests with:
 
 Do not publish raw trade staging files, website account files, `.env` values,
 session cookies or model snapshot datasets to this public source repository.
+
+## INTC / TSLA Case Pilot
+
+`flow_case_protocol.json` fixes a descriptive pilot from July 1 through
+October 31, 2025, with data from May 1 for rolling-window warm-up. These dates
+were chosen after reading the supplied v0.7 case study; the cases are not unseen
+test data. RGTI and BBAI remain `not_run`, with no established manipulation label.
+
+The first unfiltered server export completed INTC but timed out on TSLA under
+the bounded query budget. A separate versioned export uses checksum prefix `0`
+for **both** tickers, nominally 1/16 of checksum space. Direction is computed
+between selected trades, not full-tape neighbors. Representativeness is unknown;
+there is no multiplication by 16 or conversion to holdings. The original INTC
+export is retained separately. Current website MSFT snapshots are not changed
+to this sampling policy.
+
+`integrations/us_stock/ops/export_flow_cases.py` runs using the teacher server's
+existing read-only repository SQL, with a parameterized sample predicate. It
+refuses an unexpected SQL shape, unapproved tickers, public output paths, long
+windows and query budgets over 60 seconds. It stages only completed queries,
+uses at most two threads per query, caps memory at 2 GiB, and uses a job lock.
+No production table, API source, website service or vendor subscription is
+changed. The successful pilot uses the server's existing authorized adjusted
+daily-aggregate vendor helper; price provenance and adjustment flags are saved.
+
+The new `flow_case_audit.py` checks calendar/session coverage and reconciles
+direct 5m-to-day sampled notional with 5m-to-session-anchored-hour-to-day sums.
+The final hourly bucket can be 30 minutes. This checks the aggregation path,
+not independent tape completeness or the old screenshot's hourly calculation.
+Missing observations remain unavailable. Past-only five-session price response
+and 5/20-session sampled pressure produce descriptive conflict candidates, not
+institutional identity or trade instructions.
+
+The deck's slide 3 uses a continuous model bias, while the inspected repository
+uses `long=1`, `short=-1`, otherwise zero for modeled share changes. The pilot
+records this unresolved formula-version difference. Optional offline v5.3 replay
+uses the same price and flow snapshots but preserves its original auction and
+outlier filters. It fits its existing full-sample HMM and reliability; benchmark,
+short-volume and dark-pool context are explicitly absent. It is an arithmetic
+and semantics comparison, not an exact reproduction of the deck or a predictive
+backtest. No return, Sharpe, accuracy or manipulation probability is fabricated.
+
+After downloading the private completed export into a local ignored directory:
+
+```bash
+.venv/bin/python 'Backtest/backtest scripts & outputs/run_flow_cases.py' \
+  --input-root local-artifacts/flow-cases-20261027/inputs-prefix0 \
+  --replay-repository \
+  --output local-artifacts/flow-cases-20261027/pilot.json
+
+.venv/bin/python 'Backtest/backtest scripts & outputs/plot_flow_cases.py' \
+  --input local-artifacts/flow-cases-20261027/pilot.json \
+  --output local-artifacts/flow-cases-20261027/case-preview.html \
+  --png local-artifacts/flow-cases-20261027/case-preview.png
+```
+
+The standalone Plotly preview embeds its JavaScript, offers English/Chinese
+labels and a date-range slider, and does not contact the production website.
+The optional PNG uses Matplotlib without browser/network access. A static
+figure check does not verify HTML interaction or mobile layout. Browser policy
+currently blocks agent navigation to `file:` URLs; do not bypass that restriction.
+Raw snapshots and derived case datasets stay local/private, not in this fork.

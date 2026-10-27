@@ -1,0 +1,46 @@
+{
+  "schema": "flow-case-protocol-v1",
+  "id": "intc-tsla-pilot-checksum0-20261027",
+  "supersedes": "intc-tsla-pilot-20261027 (unfiltered export exceeded the TSLA query budget)",
+  "createdOn": "2026-10-27",
+  "evaluationStatus": "descriptive_case_study_not_out_of_sample",
+  "collectionStart": "2025-05-01",
+  "analysisStart": "2025-07-01",
+  "analysisEnd": "2025-10-31",
+  "session": "XNYS regular session only",
+  "flowSample": {"kind": "checksum_prefix", "prefix": "0", "nominalFraction": 0.0625, "direction": "Adjacent selected trades; not full-tape neighbors", "fullMarketExtrapolation": false},
+  "thresholdsUsd": {"super": 500000, "large": 100000, "mid": 20000},
+  "priceResponseBars": 5,
+  "modelPressureWindows": [5, 20],
+  "primaryCases": [
+    {
+      "ticker": "INTC",
+      "question": "How do sampled large-trade pressure and price response change around the government agreement?",
+      "events": [
+        {
+          "date": "2025-08-22",
+          "publicationDate": "2025-08-25",
+          "label": "Government agreement dated Aug 22; 8-K filed Aug 25",
+          "sourceUrl": "https://www.intc.com/filings-reports/all-sec-filings/content/0000050863-25-000129/0000050863-25-000129.pdf",
+          "use": "Annotation only; company share issuance is not an observed secondary-market institutional buy. Intraday publication time is unverified."
+        }
+      ]
+    },
+    {
+      "ticker": "TSLA",
+      "question": "When sampled selling pressure and rising price diverge, does the model retain the conflict instead of inferring a short instruction?",
+      "events": []
+    }
+  ],
+  "pendingCases": [
+    {"ticker": "RGTI", "status": "not_run", "hypothesis": "Check sensitivity to unusual trading; manipulation is not an established label."},
+    {"ticker": "BBAI", "status": "not_run", "hypothesis": "Check sensitivity to unusual trading; manipulation is not an established label."}
+  ],
+  "limitations": [
+    "The windows were selected after inspecting historical case studies; this is not unseen test data.",
+    "The pilot does not fit HMM states, optimize parameters, report strategy returns or infer institutional identity.",
+    "An aggregation identity validates the new aggregation path only, not the original case-study screenshot or complete market capture.",
+    "Flow bucket quality does not independently establish raw-trade deduplication, correction eligibility or fractional-share precision.",
+    "Pilot flow uses checksum prefix 0 for both tickers because unfiltered TSLA reads exceed the bounded query budget. The nominal 1/16 subset is not established as representative; amounts are never multiplied by 16. Full stored INTC observations are retained separately."
+  ]
+}
